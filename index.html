@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Подводная лодка — Катакомбы майя (v2.3)</title>
+<title>Подводная лодка — Катакомбы майя (v2.4)</title>
 <style>
   html, body {
     margin: 0;
@@ -124,6 +124,9 @@
   .menu-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
   .menu-list .btn { width: 100%; padding: 14px; font-size: 16px; }
 
+  /* ============================================================
+     HUD (вверху слева)
+     ============================================================ */
   #hud {
     position: absolute; top: 10px; left: 10px;
     font-family: monospace; font-size: 13px;
@@ -131,12 +134,20 @@
     padding: 6px 10px; border: 1px solid #1e3a55;
     border-radius: 8px; pointer-events: none; line-height: 1.5;
   }
+
+  /* ============================================================
+     HP-бар — В ЛЕВОМ НИЖНЕМ УГЛУ
+     ============================================================ */
   #hpbar {
-    position: absolute; top: 10px; right: 10px;
-    width: 140px; height: 20px;
-    background: rgba(7, 19, 32, 0.8);
-    border: 1px solid #1e3a55; border-radius: 6px;
+    position: absolute;
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    left: calc(20px + env(safe-area-inset-left, 0px));
+    width: 180px; height: 24px;
+    background: rgba(7, 19, 32, 0.85);
+    border: 2px solid #1e3a55; border-radius: 8px;
     overflow: hidden; pointer-events: none;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+    z-index: 2;
   }
   #hpfill {
     height: 100%; width: 100%;
@@ -144,10 +155,17 @@
     transition: width 0.15s linear, background 0.2s;
   }
   #hptext {
-    position: absolute; top: 12px; right: 14px;
-    font-family: monospace; font-size: 12px;
-    pointer-events: none; text-shadow: 0 0 4px #000;
+    position: absolute;
+    bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+    left: calc(28px + env(safe-area-inset-left, 0px));
+    font-family: monospace; font-size: 13px;
+    font-weight: bold;
+    pointer-events: none;
+    color: #ffffff;
+    text-shadow: 0 0 4px #000, 0 0 8px rgba(0,0,0,0.8);
+    z-index: 3;
   }
+
   #hint {
     position: absolute; bottom: 12px; left: 50%;
     transform: translateX(-50%);
@@ -185,7 +203,7 @@
   .gc-btn:hover { background: rgba(20, 50, 74, 0.95); border-color: #2b7fff; }
   .gc-btn:active { transform: scale(0.94); }
 
-  /* Панель fullscreen + новое окно — ВСЕГДА видима, ВВЕРХУ СПРАВА */
+  /* Панель fullscreen + новое окно + звук — ВВЕРХУ СПРАВА */
   #ctrlPanel {
     position: fixed;
     top: 10px;
@@ -194,7 +212,7 @@
     gap: 6px;
     z-index: 300;
   }
-  #fsBtn, #winBtn {
+  #fsBtn, #winBtn, #muteBtn {
     width: 44px; height: 44px;
     border-radius: 10px;
     background: rgba(7, 19, 32, 0.85);
@@ -207,13 +225,14 @@
     -webkit-tap-highlight-color: transparent;
     padding: 0;
     font-family: inherit;
+    font-size: 20px;
     touch-action: manipulation;
   }
-  #fsBtn:hover, #winBtn:hover {
+  #fsBtn:hover, #winBtn:hover, #muteBtn:hover {
     background: rgba(20, 50, 74, 0.95);
     border-color: #2b7fff;
   }
-  #fsBtn:active, #winBtn:active { transform: scale(0.94); }
+  #fsBtn:active, #winBtn:active, #muteBtn:active { transform: scale(0.94); }
   #fsBtn svg, #winBtn svg { display: block; }
 
   .player-badge {
@@ -228,6 +247,7 @@
     color: #ffd166;
     pointer-events: none;
     white-space: nowrap;
+    z-index: 5;
   }
 
   .row {
@@ -275,9 +295,6 @@
     text-align: center; opacity: 0.6; padding: 24px 0; font-style: italic;
   }
 
-  /* ============================================================
-     ПАНЕЛЬ ВЫБОРА: класс → ученик ИЛИ свой ник
-     ============================================================ */
   .choice-tabs {
     display: flex;
     gap: 6px;
@@ -308,7 +325,6 @@
     color: #ffffff;
     box-shadow: 0 2px 10px rgba(43, 127, 255, 0.4);
   }
-
   .choice-pane { display: none; }
   .choice-pane.active { display: block; }
 
@@ -338,10 +354,7 @@
     outline: none;
     border-color: #2b7fff;
   }
-  .select-block select:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
+  .select-block select:disabled { opacity: 0.5; cursor: not-allowed; }
 
   #loadingMsg {
     padding: 20px;
@@ -351,7 +364,6 @@
     text-align: center;
   }
 
-  /* Превью выбранного — только сокращение */
   .selected-preview {
     margin: 12px 0;
     padding: 12px 16px;
@@ -428,13 +440,11 @@
   .server-status.offline { color: #ff6b6b; border-color: #ff6b6b; }
   .server-status.checking { color: #ffd166; border-color: #ffd166; }
 
-  /* ============================================================
-     КНОПКА МОТОР — СЛЕВА
-     ============================================================ */
+  /* МОТОР — слева */
   #thrustButton {
     display: none;
     position: fixed;
-    bottom: calc(26px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(70px + env(safe-area-inset-bottom, 0px));
     left: calc(26px + env(safe-area-inset-left, 0px));
     z-index: 60;
     touch-action: none;
@@ -445,8 +455,7 @@
   body.input-touch #thrustButton:not(.hidden) { display: block; }
 
   #thrustBtn {
-    width: 130px;
-    height: 130px;
+    width: 130px; height: 130px;
     border-radius: 50%;
     background: radial-gradient(circle at 38% 35%, #ff9a6a, #c9482a);
     border: 3px solid #ffd166;
@@ -478,11 +487,7 @@
     fill: none;
     pointer-events: none;
   }
-  #thrustBtn .label {
-    pointer-events: none;
-    font-size: 11px;
-    opacity: 0.95;
-  }
+  #thrustBtn .label { pointer-events: none; font-size: 11px; opacity: 0.95; }
   #thrustBtn.active {
     transform: scale(0.94);
     background: radial-gradient(circle at 38% 35%, #ffd166, #ff6a3a);
@@ -490,16 +495,13 @@
     box-shadow: 0 0 50px rgba(255, 200, 80, 0.95), inset 0 0 30px rgba(255,255,255,0.3);
   }
 
-  /* ============================================================
-     СТИК — СПРАВА
-     ============================================================ */
+  /* СТИК — справа */
   #mobileControls {
     display: none;
     position: fixed;
     bottom: calc(26px + env(safe-area-inset-bottom, 0px));
     right: calc(26px + env(safe-area-inset-right, 0px));
-    width: 150px;
-    height: 150px;
+    width: 150px; height: 150px;
     z-index: 60;
     touch-action: none;
     user-select: none;
@@ -554,8 +556,6 @@
   }
 
   @media (max-width: 700px) {
-    #hpbar { width: 110px; height: 18px; }
-    #hptext { font-size: 11px; top: 11px; }
     #hud { font-size: 11px; padding: 5px 8px; }
     #gameControls { right: 110px; }
     .gc-btn { width: 38px; height: 38px; font-size: 16px; }
@@ -567,12 +567,24 @@
     .panel { padding: 22px 20px; }
     .panel h1 { font-size: 24px; }
     .panel h2 { font-size: 19px; }
-    #fsBtn, #winBtn { width: 40px; height: 40px; }
+    #fsBtn, #winBtn, #muteBtn { width: 40px; height: 40px; font-size: 18px; }
+
+    #hpbar {
+      width: 150px; height: 22px;
+      bottom: calc(160px + env(safe-area-inset-bottom, 0px));
+      left: calc(20px + env(safe-area-inset-left, 0px));
+    }
+    #hptext {
+      font-size: 12px;
+      bottom: calc(163px + env(safe-area-inset-bottom, 0px));
+      left: calc(28px + env(safe-area-inset-left, 0px));
+    }
+    #thrustButton {
+      bottom: calc(26px + env(safe-area-inset-bottom, 0px));
+    }
   }
 
   @media (max-width: 500px) {
-    #hpbar { width: 90px; height: 16px; }
-    #hptext { font-size: 10px; top: 10px; }
     #hud { font-size: 10px; }
     #gameControls { right: 100px; gap: 4px; }
     .gc-btn { width: 34px; height: 34px; font-size: 14px; }
@@ -589,13 +601,32 @@
     #thrustBtn svg { width: 30px; height: 30px; }
     #joystickKnob { width: 52px; height: 52px; margin-left: -26px; margin-top: -26px; }
     .play-btn { width: 100px; height: 100px; }
-    #fsBtn, #winBtn { width: 36px; height: 36px; }
+    #fsBtn, #winBtn, #muteBtn { width: 36px; height: 36px; font-size: 16px; }
+
+    #hpbar {
+      width: 130px; height: 20px;
+      bottom: calc(135px + env(safe-area-inset-bottom, 0px));
+      left: calc(16px + env(safe-area-inset-left, 0px));
+    }
+    #hptext {
+      font-size: 11px;
+      bottom: calc(138px + env(safe-area-inset-bottom, 0px));
+      left: calc(24px + env(safe-area-inset-left, 0px));
+    }
   }
 </style>
 </head>
 <body>
 
 <canvas id="game" class="hidden"></canvas>
+
+<!-- Фоновая музыка -->
+<audio id="menuMusic" loop preload="auto" style="display:none;">
+  <source src="music/menu.mp3" type="audio/mpeg">
+</audio>
+<audio id="gameMusic" loop preload="auto" style="display:none;">
+  <source src="music/level1.mp3" type="audio/mpeg">
+</audio>
 
 <div id="hud" class="hidden"></div>
 <div id="hpbar" class="hidden"><div id="hpfill"></div></div>
@@ -628,8 +659,9 @@
   </div>
 </div>
 
-<!-- Fullscreen + новое окно — ВСЕГДА видимы, ВВЕРХУ СПРАВА -->
+<!-- Fullscreen + новое окно + звук — ВВЕРХУ СПРАВА -->
 <div id="ctrlPanel">
+  <button id="muteBtn" title="Вкл/выкл музыку">🔊</button>
   <button id="fsBtn" title="Полноэкранный режим (F)">
     <svg id="fsIconExpand" width="22" height="22" viewBox="0 0 24 24" fill="none"
          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -657,7 +689,7 @@
 <!-- Заставка -->
 <div id="screen-splash" class="overlay show">
   <div class="panel">
-    <div class="version-badge">ВЕРСИЯ 2.3 — МОБИЛЬНАЯ</div>
+    <div class="version-badge">ВЕРСИЯ 2.4 — С МУЗЫКОЙ</div>
     <h1>ЗАТОНУВШИЕ КАТАКОМБЫ</h1>
     <p style="color:#d4a259; letter-spacing:2px; font-size:13px;">◆ ХРАМ МАЙЯ ◆</p>
     <div class="story-text">
@@ -683,13 +715,11 @@
     <div id="loadingMsg">Загрузка списка учеников...</div>
 
     <div id="selectContent" class="hidden">
-      <!-- Переключатель -->
       <div class="choice-tabs">
         <button class="choice-tab active" id="tabList" data-mode="list">📋 Выбрать из списка</button>
         <button class="choice-tab" id="tabNick" data-mode="nick">✏️ Ввести свой ник</button>
       </div>
 
-      <!-- Панель 1: из списка -->
       <div class="choice-pane active" id="paneList">
         <div class="select-block">
           <label>Класс</label>
@@ -705,7 +735,6 @@
         </div>
       </div>
 
-      <!-- Панель 2: свой ник -->
       <div class="choice-pane" id="paneNick">
         <div class="select-block">
           <label>Ник (до 12 символов)</label>
@@ -713,7 +742,6 @@
         </div>
       </div>
 
-      <!-- Превью выбранного — только сокращение, никакого ФИО -->
       <div id="selectedPreview" class="selected-preview hidden"></div>
 
       <div style="margin-top:16px;">
@@ -775,6 +803,7 @@
       <div><b>Стик справа</b> — направление поворота.</div>
       <div><b>Кнопка МОТОР слева</b> — включить движение вперёд.</div>
       <div style="margin-top:8px;"><b>Кнопки вверху справа:</b></div>
+      <div><b>🔊</b> — включить/выключить музыку.</div>
       <div><b>⛶</b> — полноэкранный режим (или клавиша F).</div>
       <div><b>🪟</b> — открыть игру в новом окне.</div>
     </div>
@@ -797,8 +826,9 @@
       <div><b>Стен</b> — <span id="opt-walls"></span></div>
       <div><b>Рыб</b> — <span id="opt-fishes"></span></div>
       <div><b>Видимая ширина мира</b> — <span id="opt-view"></span> px</div>
-      <div><b>Версия игры</b> — <span id="opt-version">2.3</span></div>
+      <div><b>Версия игры</b> — <span id="opt-version">2.4</span></div>
       <div><b>Сервер</b> — <span id="opt-server"></span></div>
+      <div><b>Музыка</b> — <span id="opt-music">—</span></div>
     </div>
     <button class="btn" id="optionsBack">← Назад в меню</button>
   </div>
@@ -846,7 +876,7 @@
 // ================================================================
 //  КОНСТАНТЫ
 // ================================================================
-const GAME_VERSION = '2.3';
+const GAME_VERSION = '2.4';
 const SERVER_URL = 'https://script.google.com/macros/s/AKfycbwpGZ-l2Bi-NTukEUmnA-5McDMju7suglCohRzHCIQKf97hwgH1tOyy8wuaMQfCfo0d/exec';
 
 // ================================================================
@@ -883,6 +913,77 @@ resize();
 const el = id => document.getElementById(id);
 
 // ================================================================
+//  МУЗЫКА
+// ================================================================
+const menuMusic = el('menuMusic');
+const gameMusic = el('gameMusic');
+const muteBtn = el('muteBtn');
+
+let musicEnabled = true;
+let musicStarted = false;
+
+try {
+  const saved = localStorage.getItem('mayan_aquanaut_music');
+  if (saved === 'off') musicEnabled = false;
+} catch (e) {}
+
+function updateMuteIcon() {
+  if (muteBtn) muteBtn.textContent = musicEnabled ? '🔊' : '🔇';
+  const optMusic = el('opt-music');
+  if (optMusic) optMusic.textContent = musicEnabled ? 'включена' : 'выключена';
+}
+
+function startMusicIfAllowed() {
+  if (!musicEnabled || musicStarted) return;
+  musicStarted = true;
+  if (menuMusic) {
+    menuMusic.volume = 0.5;
+    menuMusic.play().catch(() => { musicStarted = false; });
+  }
+}
+
+function switchMusic(track) {
+  if (menuMusic) menuMusic.pause();
+  if (gameMusic) gameMusic.pause();
+
+  if (!musicEnabled) return;
+
+  if (track === 'menu' && menuMusic) {
+    menuMusic.volume = 0.5;
+    menuMusic.play().catch(() => {});
+  } else if (track === 'game' && gameMusic) {
+    gameMusic.volume = 0.45;
+    gameMusic.play().catch(() => {});
+  }
+}
+
+function toggleMute() {
+  musicEnabled = !musicEnabled;
+  try {
+    localStorage.setItem('mayan_aquanaut_music', musicEnabled ? 'on' : 'off');
+  } catch (e) {}
+
+  if (musicEnabled) {
+    if (started) switchMusic('game');
+    else switchMusic('menu');
+  } else {
+    if (menuMusic) menuMusic.pause();
+    if (gameMusic) gameMusic.pause();
+  }
+  updateMuteIcon();
+}
+
+if (muteBtn) {
+  muteBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleMute();
+  });
+}
+
+updateMuteIcon();
+
+// ================================================================
 //  ЭКРАНЫ
 // ================================================================
 const screens = {
@@ -906,6 +1007,12 @@ function showScreen(name) {
   const playing = (name === null);
   hudEls.forEach(e => e.classList.toggle('hidden', !playing));
   canvas.classList.toggle('hidden', !playing);
+
+  // Управление музыкой
+  if (musicEnabled) {
+    if (playing) switchMusic('game');
+    else switchMusic('menu');
+  }
 }
 
 // ================================================================
@@ -941,8 +1048,6 @@ function toggleFullscreen() {
         const p = req.call(elem);
         if (p && p.catch) p.catch(() => showToast('⚠️ Полный экран заблокирован. Откройте 🪟'));
       } catch (e) { showToast('⚠️ Полный экран заблокирован. Откройте 🪟'); }
-    } else {
-      showToast('⚠️ Полный экран не поддерживается');
     }
   } else {
     const exit = document.exitFullscreen || document.webkitExitFullscreen
@@ -998,11 +1103,11 @@ window.addEventListener('keydown', e => {
 updateFsIcon();
 
 // ================================================================
-//  ВЫБОР ИГРОКА — СПИСОК ИЛИ СВОЙ НИК
+//  ВЫБОР ИГРОКА
 // ================================================================
 let allStudents = [];
-let currentPlayer = null;   // { klass, short, source: 'list'|'nick' }
-let choiceMode = 'list';    // 'list' | 'nick'
+let currentPlayer = null;
+let choiceMode = 'list';
 
 function shortenFio(fio) {
   const parts = fio.trim().split(/\s+/);
@@ -1014,7 +1119,6 @@ function renderSelectedPreview() {
   const preview = el('selectedPreview');
   if (currentPlayer) {
     preview.classList.remove('hidden');
-    // Только сокращение — без ФИО
     if (currentPlayer.source === 'nick') {
       preview.textContent = `Ник: ${currentPlayer.short}`;
     } else {
@@ -1032,12 +1136,8 @@ function switchMode(mode) {
   el('tabNick').classList.toggle('active', mode === 'nick');
   el('paneList').classList.toggle('active', mode === 'list');
   el('paneNick').classList.toggle('active', mode === 'nick');
-
-  // Сбрасываем выбор при смене режима
   currentPlayer = null;
   renderSelectedPreview();
-
-  // Кнопка "Начать" активна, если в текущем режиме всё заполнено
   updateConfirmButton();
   updateNickPreview();
 }
@@ -1067,12 +1167,9 @@ function updateNickPreview() {
 
 el('tabList').addEventListener('click', () => switchMode('list'));
 el('tabNick').addEventListener('click', () => switchMode('nick'));
-
 el('nickInput').addEventListener('input', updateNickPreview);
 el('nickInput').addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !el('confirmStudentBtn').disabled) {
-    el('confirmStudentBtn').click();
-  }
+  if (e.key === 'Enter' && !el('confirmStudentBtn').disabled) el('confirmStudentBtn').click();
 });
 
 async function loadStudents() {
@@ -1127,7 +1224,7 @@ el('classSelect').addEventListener('change', (e) => {
   }
   const students = allStudents
     .filter(s => s.klass === klass)
-    .map(s => ({ klass: s.klass, short: shortenFio(s.fio) }))   // только сокращение!
+    .map(s => ({ klass: s.klass, short: shortenFio(s.fio) }))
     .sort((a, b) => a.short.localeCompare(b.short, 'ru'));
 
   studentSelect.innerHTML = '<option value="">— выберите ученика —</option>' +
@@ -1602,11 +1699,18 @@ function togglePause() {
   if (!started) return;
   paused = !paused;
   el('pauseOverlay').classList.toggle('show', paused);
+  if (paused) {
+    if (menuMusic) menuMusic.pause();
+    if (gameMusic) gameMusic.pause();
+  } else if (musicEnabled) {
+    switchMusic('game');
+  }
 }
 
 el('pauseBtn').addEventListener('click', togglePause);
 el('pauseResume').addEventListener('click', () => {
   paused = false; el('pauseOverlay').classList.remove('show');
+  if (musicEnabled) switchMusic('game');
 });
 el('pauseRestart').addEventListener('click', () => {
   paused = false; el('pauseOverlay').classList.remove('show');
@@ -2292,7 +2396,6 @@ async function showStats(title) {
     grade = 'Много ошибок'; gradeClass = 'bad';
   }
 
-  // Только сокращение!
   const playerStr = currentPlayer
     ? (currentPlayer.source === 'nick'
         ? currentPlayer.short
@@ -2331,7 +2434,6 @@ async function showStats(title) {
 
   if (!scoreSent && currentPlayer) {
     scoreSent = true;
-    // Если ученик из списка — отправляем; если свой ник — тоже отправляем
     const result = await sendResult(CURRENT_LEVEL, run.accuracy);
     if (result.ok) {
       el('sendStatus').textContent = '✅ Результат отправлен в таблицу';
@@ -2397,7 +2499,7 @@ function goToSelectPlayer() {
   stickEnd(); thrustUp();
   currentPlayer = null;
   updatePlayerBadge();
-  switchMode('list');   // по умолчанию — выбор из списка
+  switchMode('list');
   el('nickInput').value = '';
   showScreen('select');
   loadStudents();
@@ -2406,7 +2508,10 @@ function goToSelectPlayer() {
 // ================================================================
 //  ОБРАБОТЧИКИ ИНТЕРФЕЙСА
 // ================================================================
-el('playBtn').addEventListener('click', goToSelectPlayer);
+el('playBtn').addEventListener('click', () => {
+  startMusicIfAllowed();
+  goToSelectPlayer();
+});
 el('menuStart').addEventListener('click', startGame);
 el('menuChangePlayer').addEventListener('click', goToSelectPlayer);
 el('menuStory').addEventListener('click', () => showScreen('story'));
@@ -2426,6 +2531,7 @@ el('menuOptions').addEventListener('click', () => {
   el('opt-fishes').textContent = fishes.length || 18;
   el('opt-view').textContent = TARGET_VIEW_WIDTH;
   el('opt-version').textContent = GAME_VERSION;
+  el('opt-music').textContent = musicEnabled ? 'включена' : 'выключена';
   showScreen('options');
 });
 el('storyBack').addEventListener('click', () => showScreen('menu'));
