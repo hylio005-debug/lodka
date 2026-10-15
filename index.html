@@ -638,4 +638,353 @@
 </style>
 </head>
 <body>
-  
+<canvas id="game" class="hidden"></canvas>
+
+<!-- Фоновая музыка -->
+<audio id="menuMusic" loop preload="auto" style="display:none;">
+  <source src="music/menu.mp3" type="audio/mpeg">
+</audio>
+<audio id="gameMusic" loop preload="auto" style="display:none;">
+  <source src="music/level1.mp3" type="audio/mpeg">
+</audio>
+
+<div id="hud" class="hidden"></div>
+<div id="hpbar" class="hidden"><div id="hpfill"></div></div>
+<div id="hptext" class="hidden">Корпус: 100</div>
+<div id="hint" class="hidden">ЛКМ — моторы вперёд. Курсор — направление поворота.</div>
+<div id="playerBadge" class="player-badge hidden"></div>
+
+<div id="gameControls" class="hidden">
+  <button class="gc-btn" id="pauseBtn" title="Пауза (Esc)">⏸</button>
+  <button class="gc-btn" id="restartBtn" title="Рестарт">🔄</button>
+  <button class="gc-btn" id="exitBtn" title="Выход в меню">🚪</button>
+</div>
+
+<div id="thrustButton" class="hidden">
+  <button id="thrustBtn" aria-label="Мотор">
+    <svg viewBox="0 0 24 24">
+      <path d="M12 3 L12 15" />
+      <path d="M7 8 L12 3 L17 8" />
+      <path d="M4 21 L20 21" />
+    </svg>
+    <span class="label">МОТОР</span>
+  </button>
+</div>
+
+<div id="mobileControls" class="hidden">
+  <div id="joystickBase">
+    <div id="joystickKnob"></div>
+  </div>
+</div>
+
+<div id="ctrlPanel">
+  <button id="muteBtn" title="Вкл/выкл музыку">🔊</button>
+  <button id="fsBtn" title="Полноэкранный режим (F)">
+    <svg id="fsIconExpand" width="22" height="22" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 9V4h5"/><path d="M20 9V4h-5"/>
+      <path d="M4 15v5h5"/><path d="M20 15v5h-5"/>
+    </svg>
+    <svg id="fsIconCollapse" width="22" height="22" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+         style="display:none;">
+      <path d="M9 4v5H4"/><path d="M15 4v5h5"/>
+      <path d="M9 20v-5H4"/><path d="M15 20v-5h5"/>
+    </svg>
+  </button>
+  <button id="winBtn" title="Открыть в новом окне">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M15 3h6v6"/><path d="M10 14L21 3"/>
+      <path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/>
+    </svg>
+  </button>
+</div>
+
+<div id="serverStatus" class="server-status checking">Сервер: проверка...</div>
+
+<!-- Portrait warning для мобильных -->
+<div id="portraitWarning">
+  <div class="content">
+    <div class="rot-icon">📱</div>
+    <h2>Поверните телефон</h2>
+    <p>Игра работает только в горизонтальном положении</p>
+  </div>
+</div>
+
+<!-- ЗАСТАВКА -->
+<div id="screen-splash" class="overlay show">
+  <div class="panel">
+    <div class="version-badge">ВЕРСИЯ 3.0 — «ПОГРУЖЕНИЕ»</div>
+    <h1>ПОГРУЖЕНИЕ</h1>
+    <p style="color:#d4a259; letter-spacing:2px; font-size:14px;">◆ ЗАТОНУВШИЕ ХРАМЫ ◆</p>
+    <div class="story-text">
+      <p><b>2026. Глубина 4 000 метров.</b> После разработки <em>гравитационного щита</em>, позволяющего аппаратам выдерживать давление на любой глубине, экспедиция профессора <b>Соколова</b> отправилась к затонувшим храмам, найденным на дне Тихого океана.</p>
+      <p>Автономный дрон-разведчик <em>«Катран»</em> потерял связь с экспедицией. Вы — пилот. Проведите дрон через <b>пять секторов затопленного комплекса</b> и узнайте, что скрывается на дне.</p>
+      <p style="color:#d4a259;">Для перехода в следующий сектор нужно набрать <b>не менее 80% точности</b>. Берегите корпус и не задевайте глубоководных рыб.</p>
+    </div>
+    <div class="play-btn" id="playBtn" title="Играть">
+      <svg width="52" height="52" viewBox="0 0 24 24" fill="#ffffff">
+        <path d="M8 5v14l11-7z"/>
+      </svg>
+    </div>
+    <p style="font-size:13px; opacity:0.5;">Нажмите ▶ чтобы продолжить</p>
+  </div>
+</div>
+
+<!-- ВЫБОР ИГРОКА -->
+<div id="screen-select" class="overlay">
+  <div class="panel">
+    <h2>Кто играет?</h2>
+    <p style="opacity:0.7; font-size:13px;">Выберите себя из списка или введите свой ник</p>
+
+    <div id="loadingMsg">Загрузка списка учеников...</div>
+
+    <div id="selectContent" class="hidden">
+      <div class="choice-tabs">
+        <button class="choice-tab active" id="tabList" data-mode="list">📋 Выбрать из списка</button>
+        <button class="choice-tab" id="tabNick" data-mode="nick">✏️ Ввести свой ник</button>
+      </div>
+
+      <div class="choice-pane active" id="paneList">
+        <div class="select-block">
+          <label>Класс</label>
+          <select id="classSelect" disabled>
+            <option value="">— загрузка —</option>
+          </select>
+        </div>
+        <div class="select-block">
+          <label>Ученик</label>
+          <select id="studentSelect" disabled>
+            <option value="">— сначала выберите класс —</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="choice-pane" id="paneNick">
+        <div class="select-block">
+          <label>Ник (до 12 символов)</label>
+          <input type="text" id="nickInput" maxlength="12" placeholder="Например: AquaKing" autocomplete="off">
+        </div>
+      </div>
+
+      <div id="selectedPreview" class="selected-preview hidden"></div>
+
+      <div style="margin-top:16px;">
+        <button class="btn gold" id="confirmStudentBtn" disabled>▶ Дальше</button>
+        <button class="btn secondary" id="selectBackBtn">← Назад</button>
+      </div>
+    </div>
+
+    <div id="selectError" class="hidden" style="margin-top:16px;">
+      <p style="color:#ff6b6b;">⚠️ Не удалось загрузить список учеников</p>
+      <p style="font-size:12px; opacity:0.7;">Можно ввести свой ник без списка</p>
+      <button class="btn" id="selectRetryBtn">Повторить загрузку</button>
+      <button class="btn secondary" id="selectBackErrorBtn">← В меню</button>
+    </div>
+  </div>
+</div>
+
+<!-- КАРТА УРОВНЕЙ -->
+<div id="screen-map" class="overlay">
+  <div class="panel" style="max-width: 900px; padding: 20px;">
+    <h2 id="mapPlayerInfo" style="font-size: 18px; margin-bottom: 10px;"></h2>
+    <canvas id="mapCanvas" width="860" height="420" style="border: 1px solid #1e3a55; border-radius: 12px; background: #0a1a28; max-width: 100%; height: auto; cursor: pointer;"></canvas>
+    <div id="mapControls" style="margin-top: 14px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
+      <button class="btn secondary" id="mapLeaderboardBtn">🏆 Лидеры</button>
+      <button class="btn secondary" id="mapStoryBtn">📜 История</button>
+      <button class="btn secondary" id="mapControlsBtn">⚙ Управление</button>
+      <button class="btn secondary" id="mapChangePlayerBtn">👤 Сменить игрока</button>
+    </div>
+  </div>
+</div>
+
+<!-- ПРЕДЫСТОРИЯ -->
+<div id="screen-story" class="overlay">
+  <div class="panel">
+    <h2>📜 Предыстория</h2>
+    <div class="story-text">
+      <p>В 2026 году международная научная экспедиция под руководством <b>профессора Соколова</b> совершила прорыв: разработан <em>гравитационный щит</em>, выдерживающий давление на любой глубине. Человечество впервые смогло заглянуть в самые глубокие места планеты.</p>
+      <p>Спутники засекли на дне Тихого океана, на глубине 4 километров, структуры, похожие на <b>древние затопленные храмы</b> неизвестной цивилизации. В самое сердце находки отправлен автономный дрон-разведчик <em>«Катран»</em>.</p>
+      <p>Но на 6-й минуте погружения сигнал оборвался. <b>Вы — пилот дрона.</b> Последний сигнал пришёл из пяти секторов затопленного комплекса.</p>
+      <p style="color:#d4a259;">Для перехода в следующий сектор нужно набрать <b>не менее 80% точности</b> — профессор Соколов не рискует дроном без гарантии, что он справится.</p>
+    </div>
+    <button class="btn" id="storyBack">← Назад</button>
+  </div>
+</div>
+
+<!-- УПРАВЛЕНИЕ -->
+<div id="screen-controls" class="overlay">
+  <div class="panel">
+    <h2>Управление</h2>
+    <div class="controls-list">
+      <div><b>На компьютере:</b></div>
+      <div><b>Левая кнопка мыши (зажать)</b> — включить моторы.</div>
+      <div><b>Курсор мыши</b> — направление поворота.</div>
+      <div><b>Esc</b> — пауза.</div>
+      <div style="margin-top:8px;"><b>На смартфоне:</b></div>
+      <div><b>Стик справа</b> — направление поворота.</div>
+      <div><b>Кнопка МОТОР слева</b> — движение вперёд.</div>
+      <div style="margin-top:8px;"><b>Кнопки вверху справа:</b></div>
+      <div><b>🔊</b> — вкл/выкл музыку.</div>
+      <div><b>⛶</b> — полноэкранный режим.</div>
+      <div><b>🪟</b> — открыть в новом окне.</div>
+    </div>
+    <button class="btn" id="controlsBack">← Назад</button>
+  </div>
+</div>
+
+<!-- ПАРАМЕТРЫ -->
+<div id="screen-options" class="overlay">
+  <div class="panel">
+    <h2>Параметры</h2>
+    <div class="controls-list">
+      <div><b>Версия игры</b> — <span id="opt-version">3.0</span></div>
+      <div><b>Сервер</b> — <span id="opt-server">—</span></div>
+      <div><b>Музыка</b> — <span id="opt-music">—</span></div>
+      <div><b>Качество графики</b> — 
+        <select id="opt-quality" style="background:#0a1a28;color:#eaf6ff;border:1px solid #1e3a55;border-radius:6px;padding:4px 8px;font-family:inherit;">
+          <option value="low">Низкое (быстро)</option>
+          <option value="medium">Среднее</option>
+          <option value="high">Высокое (красиво)</option>
+        </select>
+      </div>
+      <div><b>Разрешение рендера</b> — 
+        <select id="opt-render" style="background:#0a1a28;color:#eaf6ff;border:1px solid #1e3a55;border-radius:6px;padding:4px 8px;font-family:inherit;">
+          <option value="0.5">0.5 (лёгкое)</option>
+          <option value="0.75" selected>0.75 (среднее)</option>
+          <option value="1">1.0 (полное)</option>
+        </select>
+      </div>
+      <div><b>Пройдено уровней</b> — <span id="opt-progress">0 / 5</span></div>
+    </div>
+    <button class="btn" id="optionsBack">← Назад</button>
+  </div>
+</div>
+
+<!-- СТАТИСТИКА -->
+<div id="screen-stats" class="overlay">
+  <div class="panel" style="text-align:left;">
+    <h2 id="result-title" style="text-align:center;">Статистика</h2>
+    <div id="stats"></div>
+    <div id="sendStatus" style="margin-top:12px; text-align:center; font-family:monospace; font-size:13px;"></div>
+    <div style="text-align:center; margin-top:16px;">
+      <button class="btn" id="statsRestart">Пройти заново</button>
+      <button class="btn secondary" id="statsMap">← К карте</button>
+      <button class="btn secondary" id="statsMenu">В меню</button>
+    </div>
+  </div>
+</div>
+
+<!-- ЛИДЕРБОРД -->
+<div id="screen-leaderboard" class="overlay">
+  <div class="panel">
+    <h2>🏆 Топ-10 пилотов</h2>
+    <p style="opacity:0.7; font-size:13px;">По среднеарифметическому всех пройденных уровней</p>
+    <div id="leaderboard-container">
+      <div class="empty-msg">Загрузка...</div>
+    </div>
+    <div style="margin-top:16px;">
+      <button class="btn" id="lbBack">← Назад</button>
+    </div>
+  </div>
+</div>
+
+<!-- ПАУЗА -->
+<div id="pauseOverlay">
+  <div id="pausePanel">
+    <h2>⏸ Пауза</h2>
+    <button class="btn" id="pauseResume">▶ Продолжить</button>
+    <button class="btn secondary" id="pauseRestart">🔄 Рестарт</button>
+    <button class="btn secondary" id="pauseChangePlayer">👤 Сменить игрока</button>
+    <button class="btn danger" id="pauseExit">🚪 На карту</button>
+  </div>
+</div>
+
+<!-- Подключаем FIO.js (локальный список учеников) -->
+<script src="FIO.js"></script>
+
+<!-- Подключаем уровни -->
+<script src="levels/index.js"></script>
+<script src="levels/level1.js"></script>
+<script src="levels/level2.js"></script>
+<script src="levels/level3.js"></script>
+<script src="levels/level4.js"></script>
+<script src="levels/level5.js"></script>
+
+<script>
+// ================================================================
+//  КОНСТАНТЫ
+// ================================================================
+const GAME_VERSION = '3.0';
+const SERVER_URL = 'https://script.google.com/macros/s/AKfycbyjL93GjBRaRs4oVgHJcdKw-zQCvLLz_M5gMQf-HkYBIE9WFNeKFeBMIaiUmt_H0Stg/exec';
+const UNLOCK_THRESHOLD = 80;   // порог разблокировки
+const MAX_LEVEL = 5;
+
+// ================================================================
+//  ОПРЕДЕЛЕНИЕ ТАЧ-УСТРОЙСТВА
+// ================================================================
+const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+if (isTouch) document.body.classList.add('input-touch');
+
+// Определение устройства для отправки
+const DEVICE_TYPE = isTouch ? 'Mobile' : 'PC';
+
+// ================================================================
+//  НАСТРОЙКИ ГРАФИКИ (localStorage)
+// ================================================================
+let renderScale = 0.75;
+let qualityLevel = 'medium';
+
+try {
+  const savedRender = localStorage.getItem('pogruzhenie_render_scale');
+  if (savedRender) renderScale = parseFloat(savedRender);
+  const savedQuality = localStorage.getItem('pogruzhenie_quality');
+  if (savedQuality) qualityLevel = savedQuality;
+} catch (e) {}
+
+// Автоопределение для слабых устройств
+function detectQuality() {
+  const ram = navigator.deviceMemory || 4;
+  const cores = navigator.hardwareConcurrency || 4;
+  if (isTouch || ram <= 2 || cores <= 2) {
+    if (qualityLevel === 'medium') qualityLevel = 'low';
+  }
+}
+
+// ================================================================
+//  CANVAS И ЗУМ
+// ================================================================
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d', { alpha: false });
+let W = 0, H = 0;
+let cssW = 0, cssH = 0;
+
+// Зум камеры — ближе на мобильном
+const TARGET_VIEW_WIDTH_DESKTOP = 1100;
+const TARGET_VIEW_WIDTH_MOBILE = 650;
+function getTargetViewWidth() {
+  return isTouch ? TARGET_VIEW_WIDTH_MOBILE : TARGET_VIEW_WIDTH_DESKTOP;
+}
+
+let zoom = 1;
+function updateZoom() {
+  zoom = W / getTargetViewWidth();
+  zoom = Math.max(0.6, Math.min(zoom, 2.5));
+}
+function viewW() { return W / zoom; }
+function viewH() { return H / zoom; }
+
+function resize() {
+  cssW = window.innerWidth;
+  cssH = window.innerHeight;
+  W = canvas.width = Math.round(cssW * renderScale);
+  H = canvas.height = Math.round(cssH * renderScale);
+  canvas.style.width = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  updateZoom();
+}
+window.addEventListener('resize', resize);
+resize();
+
+const el = id => document.getElementById(id);  
