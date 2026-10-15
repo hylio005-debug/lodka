@@ -260,7 +260,7 @@ const STUDENTS = [
   { klass: '7А', nick: 'Абди.И' },
   { klass: '7А', nick: 'Атуч.Д' },
   { klass: '7А', nick: 'Гавр.А' },
-  { klass: '7А', nick: 'Гавр.А' },
+  { klass: '7А', nick: 'Гавр.Анат' },
   { klass: '7А', nick: 'Грец.Е' },
   { klass: '7А', nick: 'Каук.Д' },
   { klass: '7А', nick: 'Коню.И' },
