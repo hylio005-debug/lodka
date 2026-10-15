@@ -987,4 +987,780 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-const el = id => document.getElementById(id);  
+const el = id => document.getElementById(id);
+  // ================================================================
+//  МУЗЫКА
+// ================================================================
+const menuMusic = el('menuMusic');
+const gameMusic = el('gameMusic');
+const muteBtn = el('muteBtn');
+
+let musicEnabled = true;
+let musicStarted = false;
+
+try {
+  const saved = localStorage.getItem('pogruzhenie_music');
+  if (saved === 'off') musicEnabled = false;
+} catch (e) {}
+
+function updateMuteIcon() {
+  if (muteBtn) muteBtn.textContent = musicEnabled ? '🔊' : '🔇';
+  const optMusic = el('opt-music');
+  if (optMusic) optMusic.textContent = musicEnabled ? 'включена' : 'выключена';
+}
+
+function startMusicIfAllowed() {
+  if (!musicEnabled || musicStarted) return;
+  musicStarted = true;
+  if (menuMusic) {
+    menuMusic.volume = 0.5;
+    menuMusic.play().catch(() => { musicStarted = false; });
+  }
+}
+
+function switchMusic(track) {
+  if (menuMusic) menuMusic.pause();
+  if (gameMusic) gameMusic.pause();
+  if (!musicEnabled) return;
+  if (track === 'menu' && menuMusic) {
+    menuMusic.volume = 0.5;
+    menuMusic.play().catch(() => {});
+  } else if (track === 'game' && gameMusic) {
+    gameMusic.volume = 0.45;
+    gameMusic.play().catch(() => {});
+  }
+}
+
+function toggleMute() {
+  musicEnabled = !musicEnabled;
+  try {
+    localStorage.setItem('pogruzhenie_music', musicEnabled ? 'on' : 'off');
+  } catch (e) {}
+  if (musicEnabled) {
+    if (started) switchMusic('game');
+    else switchMusic('menu');
+  } else {
+    if (menuMusic) menuMusic.pause();
+    if (gameMusic) gameMusic.pause();
+  }
+  updateMuteIcon();
+}
+
+if (muteBtn) {
+  muteBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleMute();
+  });
+}
+updateMuteIcon();
+
+// ================================================================
+//  СПИСОК УЧЕНИКОВ (из FIO.js)
+// ================================================================
+function shortenFio(fio) {
+  const parts = fio.trim().split(/\s+/);
+  if (parts.length < 2) return fio.slice(0, 5);
+  return parts[0].slice(0, 4) + '.' + parts[1].charAt(0);
+}
+
+// allStudents = STUDENTS из FIO.js или пустой массив
+let allStudents = (typeof STUDENTS !== 'undefined' && Array.isArray(STUDENTS))
+  ? STUDENTS.slice()
+  : [];
+
+// ================================================================
+//  ЭКРАНЫ
+// ================================================================
+const screens = {
+  splash:      el('screen-splash'),
+  select:      el('screen-select'),
+  map:         el('screen-map'),
+  story:       el('screen-story'),
+  controls:    el('screen-controls'),
+  options:     el('screen-options'),
+  stats:       el('screen-stats'),
+  leaderboard: el('screen-leaderboard')
+};
+const hudEls = [
+  el('hud'), el('hpbar'), el('hptext'), el('hint'),
+  el('playerBadge'), el('gameControls'),
+  el('mobileControls'), el('thrustButton')
+];
+
+function showScreen(name) {
+  for (const k in screens) screens[k].classList.toggle('show', k === name);
+  const playing = (name === null);
+  hudEls.forEach(e => e.classList.toggle('hidden', !playing));
+  canvas.classList.toggle('hidden', !playing);
+
+  if (name === 'map') {
+    drawMapCanvas();
+  }
+
+  if (musicEnabled) {
+    if (playing) switchMusic('game');
+    else switchMusic('menu');
+  }
+}
+
+// ================================================================
+//  FULLSCREEN + НОВОЕ ОКНО + ОРИЕНТАЦИЯ
+// ================================================================
+const fsBtn = el('fsBtn');
+const winBtn = el('winBtn');
+const fsIconExpand = el('fsIconExpand');
+const fsIconCollapse = el('fsIconCollapse');
+
+function showToast(message) {
+  const existing = document.querySelector('.game-toast');
+  if (existing) existing.remove();
+  const toast = document.createElement('div');
+  toast.className = 'game-toast';
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 2200);
+}
+
+function isFullscreen() {
+  return document.fullscreenElement || document.webkitFullscreenElement
+      || document.mozFullScreenElement || document.msFullscreenElement || null;
+}
+
+function toggleFullscreen() {
+  const elem = document.documentElement;
+  if (!isFullscreen()) {
+    const req = elem.requestFullscreen || elem.webkitRequestFullscreen
+             || elem.mozRequestFullScreen || elem.msRequestFullscreen;
+    if (req) {
+      try {
+        const p = req.call(elem);
+        if (p && p.catch) p.catch(() => showToast('⚠️ Полный экран заблокирован'));
+      } catch (e) { showToast('⚠️ Полный экран заблокирован'); }
+    }
+  } else {
+    const exit = document.exitFullscreen || document.webkitExitFullscreen
+              || document.mozCancelFullScreen || document.msExitFullscreen;
+    if (exit) exit.call(document);
+  }
+}
+
+// Попытка блокировки ориентации (только Android Chrome)
+async function tryLockLandscape() {
+  if (!isTouch) return;
+  try {
+    if (screen.orientation && screen.orientation.lock) {
+      await screen.orientation.lock('landscape').catch(() => {});
+    }
+  } catch (e) {}
+}
+
+// ================================================================
+//  PORTRAIT WARNING (мобильные)
+// ================================================================
+function checkOrientation() {
+  const warning = el('portraitWarning');
+  if (!warning) return;
+  if (!isTouch) {
+    warning.classList.remove('show');
+    return;
+  }
+  const isPortrait = window.innerHeight > window.innerWidth;
+  // Показываем предупреждение только если игра активна и портрет
+  if (isPortrait && started) {
+    warning.classList.add('show');
+  } else {
+    warning.classList.remove('show');
+  }
+}
+window.addEventListener('resize', checkOrientation);
+window.addEventListener('orientationchange', () => setTimeout(checkOrientation, 200));
+
+function openInWindow() {
+  try {
+    const htmlContent = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, '_blank', 'fullscreen=yes,width=' + screen.width + ',height=' + screen.height);
+    if (w) {
+      showToast('✨ Открыто в новом окне');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } else {
+      showToast('⚠️ Разрешите всплывающие окна');
+    }
+  } catch (e) { showToast('⚠️ Не удалось открыть'); }
+}
+
+function updateFsIcon() {
+  const full = !!isFullscreen();
+  if (fsIconExpand) fsIconExpand.style.display = full ? 'none' : 'block';
+  if (fsIconCollapse) fsIconCollapse.style.display = full ? 'block' : 'none';
+}
+
+function bind(el, handler) {
+  if (!el) return;
+  el.addEventListener('click', e => { e.preventDefault(); handler(); });
+  el.addEventListener('touchstart', e => { e.preventDefault(); handler(); }, { passive: false });
+}
+
+bind(fsBtn, toggleFullscreen);
+bind(winBtn, openInWindow);
+
+document.addEventListener('fullscreenchange', updateFsIcon);
+document.addEventListener('webkitfullscreenchange', updateFsIcon);
+
+window.addEventListener('keydown', e => {
+  if ((e.key === 'f' || e.key === 'F' || e.key === 'а' || e.key === 'А')
+      && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
+    toggleFullscreen();
+  }
+  if (e.key === 'Escape' && started) togglePause();
+});
+updateFsIcon();
+
+// ================================================================
+//  ВЫБОР ИГРОКА
+// ================================================================
+let currentPlayer = null;
+let choiceMode = 'list';
+let currentLevel = 1;
+let playerProgress = 1;    // макс. разблокированный уровень
+
+function renderSelectedPreview() {
+  const preview = el('selectedPreview');
+  if (currentPlayer) {
+    preview.classList.remove('hidden');
+    if (currentPlayer.source === 'nick') {
+      preview.textContent = `Ник: ${currentPlayer.short}`;
+    } else {
+      preview.textContent = `${currentPlayer.klass} — ${currentPlayer.short}`;
+    }
+  } else {
+    preview.classList.add('hidden');
+    preview.textContent = '';
+  }
+}
+
+function switchMode(mode) {
+  choiceMode = mode;
+  el('tabList').classList.toggle('active', mode === 'list');
+  el('tabNick').classList.toggle('active', mode === 'nick');
+  el('paneList').classList.toggle('active', mode === 'list');
+  el('paneNick').classList.toggle('active', mode === 'nick');
+  currentPlayer = null;
+  renderSelectedPreview();
+  updateConfirmButton();
+  updateNickPreview();
+}
+
+function updateConfirmButton() {
+  const btn = el('confirmStudentBtn');
+  if (choiceMode === 'list') {
+    btn.disabled = !currentPlayer || currentPlayer.source !== 'list';
+  } else {
+    const nick = el('nickInput').value.trim();
+    btn.disabled = nick.length < 2;
+  }
+}
+
+function updateNickPreview() {
+  if (choiceMode !== 'nick') return;
+  const nick = el('nickInput').value.trim();
+  if (nick.length >= 2) {
+    currentPlayer = { klass: '—', short: nick, source: 'nick' };
+    renderSelectedPreview();
+  } else {
+    currentPlayer = null;
+    renderSelectedPreview();
+  }
+  updateConfirmButton();
+}
+
+el('tabList').addEventListener('click', () => switchMode('list'));
+el('tabNick').addEventListener('click', () => switchMode('nick'));
+el('nickInput').addEventListener('input', updateNickPreview);
+el('nickInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !el('confirmStudentBtn').disabled) el('confirmStudentBtn').click();
+});
+
+function populateClassSelect() {
+  const classSelect = el('classSelect');
+  if (!allStudents || allStudents.length === 0) {
+    el('loadingMsg').textContent = 'Список учеников пуст. Можно ввести свой ник.';
+    el('loadingMsg').classList.remove('hidden');
+    el('selectContent').classList.add('hidden');
+    return;
+  }
+
+  const uniqueClasses = [...new Set(allStudents.map(s => s.klass))].sort((a, b) => {
+    const na = parseInt(a), nb = parseInt(b);
+    if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
+    return a.localeCompare(b, 'ru');
+  });
+  classSelect.innerHTML = '<option value="">— выберите класс —</option>' +
+    uniqueClasses.map(k => `<option value="${k}">${k}</option>`).join('');
+  classSelect.disabled = false;
+
+  const studentSelect = el('studentSelect');
+  studentSelect.innerHTML = '<option value="">— сначала выберите класс —</option>';
+  studentSelect.disabled = true;
+
+  el('loadingMsg').classList.add('hidden');
+  el('selectContent').classList.remove('hidden');
+}
+
+el('classSelect').addEventListener('change', (e) => {
+  const klass = e.target.value;
+  const studentSelect = el('studentSelect');
+  if (!klass) {
+    studentSelect.innerHTML = '<option value="">— сначала выберите класс —</option>';
+    studentSelect.disabled = true;
+    currentPlayer = null;
+    renderSelectedPreview();
+    updateConfirmButton();
+    return;
+  }
+  const students = allStudents
+    .filter(s => s.klass === klass)
+    .map(s => ({ klass: s.klass, short: s.nick }))
+    .sort((a, b) => a.short.localeCompare(b.short, 'ru'));
+
+  studentSelect.innerHTML = '<option value="">— выберите ученика —</option>' +
+    students.map((s, i) => `<option value="${i}">${s.short}</option>`).join('');
+  studentSelect.disabled = false;
+  studentSelect.dataset.list = JSON.stringify(students);
+
+  currentPlayer = null;
+  renderSelectedPreview();
+  updateConfirmButton();
+});
+
+el('studentSelect').addEventListener('change', (e) => {
+  const idx = e.target.value;
+  if (idx === '') {
+    currentPlayer = null;
+    renderSelectedPreview();
+    updateConfirmButton();
+    return;
+  }
+  const students = JSON.parse(el('studentSelect').dataset.list || '[]');
+  const s = students[Number(idx)];
+  if (!s) return;
+  currentPlayer = { klass: s.klass, short: s.short, source: 'list' };
+  renderSelectedPreview();
+  updateConfirmButton();
+});
+
+el('confirmStudentBtn').addEventListener('click', async () => {
+  if (!currentPlayer) return;
+  updatePlayerBadge();
+  await loadPlayerProgress();
+  showScreen('map');
+});
+
+el('selectBackBtn').addEventListener('click', () => showScreen('splash'));
+el('selectBackErrorBtn').addEventListener('click', () => showScreen('splash'));
+el('selectRetryBtn').addEventListener('click', () => loadStudentsLocal());
+
+function loadStudentsLocal() {
+  el('loadingMsg').classList.remove('hidden');
+  el('loadingMsg').textContent = 'Загрузка списка учеников...';
+  el('selectContent').classList.add('hidden');
+  el('selectError').classList.add('hidden');
+
+  if (allStudents && allStudents.length > 0) {
+    populateClassSelect();
+    setServerStatus('online', 'Список учеников загружен');
+  } else {
+    el('loadingMsg').classList.add('hidden');
+    el('selectError').classList.remove('hidden');
+    setServerStatus('offline', 'Нет списка учеников');
+  }
+}
+
+function updatePlayerBadge() {
+  const badge = el('playerBadge');
+  if (currentPlayer) {
+    if (currentPlayer.source === 'nick') {
+      badge.textContent = `👤 ${currentPlayer.short}`;
+    } else {
+      badge.textContent = `👤 ${currentPlayer.klass} · ${currentPlayer.short}`;
+    }
+  } else {
+    badge.textContent = '';
+  }
+}
+
+function setServerStatus(state, text) {
+  const s = el('serverStatus');
+  if (!s) return;
+  s.className = 'server-status ' + state;
+  s.textContent = text;
+  const opt = el('opt-server');
+  if (opt) opt.textContent = text;
+}
+
+// ================================================================
+//  ПРОГРЕСС ИГРОКА С СЕРВЕРА
+// ================================================================
+async function loadPlayerProgress() {
+  if (!currentPlayer) {
+    playerProgress = 1;
+    return;
+  }
+  // Для ника прогресс не сохраняется — начинаем с 1
+  if (currentPlayer.source === 'nick') {
+    playerProgress = 1;
+    return;
+  }
+
+  try {
+    const url = SERVER_URL + '?action=progress&klass=' +
+      encodeURIComponent(currentPlayer.klass) +
+      '&nick=' + encodeURIComponent(currentPlayer.short) +
+      '&t=' + Date.now();
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const json = await resp.json();
+    if (json.success && json.progress) {
+      playerProgress = Number(json.progress) || 1;
+      setServerStatus('online', 'Сервер: подключён');
+    } else {
+      playerProgress = 1;
+    }
+  } catch (err) {
+    console.error('Ошибка загрузки прогресса:', err);
+    playerProgress = 1;
+    setServerStatus('offline', 'Сервер: ошибка');
+  }
+}
+
+// ================================================================
+//  КАРТА УРОВНЕЙ
+// ================================================================
+function drawMapCanvas() {
+  const mapCanvas = el('mapCanvas');
+  if (!mapCanvas) return;
+  const mctx = mapCanvas.getContext('2d');
+  const mW = mapCanvas.width;
+  const mH = mapCanvas.height;
+
+  // Фон карты — старая карта
+  mctx.fillStyle = '#0a1a28';
+  mctx.fillRect(0, 0, mW, mH);
+
+  // Море
+  const seaGrad = mctx.createLinearGradient(0, 0, mW, mH);
+  seaGrad.addColorStop(0, '#0f3a5a');
+  seaGrad.addColorStop(0.5, '#1a4a6a');
+  seaGrad.addColorStop(1, '#0a2a48');
+  mctx.fillStyle = seaGrad;
+  mctx.fillRect(0, 0, mW, mH);
+
+  // Волны (декор)
+  mctx.strokeStyle = 'rgba(127, 214, 255, 0.08)';
+  mctx.lineWidth = 1;
+  for (let i = 0; i < 12; i++) {
+    const y = (i / 12) * mH + Math.sin(i * 1.3) * 5;
+    mctx.beginPath();
+    mctx.moveTo(0, y);
+    for (let x = 0; x <= mW; x += 30) {
+      mctx.lineTo(x, y + Math.sin(x * 0.02 + i * 0.5) * 4);
+    }
+    mctx.stroke();
+  }
+
+  // Маршрут (пунктир)
+  const points = LEVELS_META.map(meta => ({
+    x: meta.mapX * mW,
+    y: (1 - meta.mapY) * mH,
+    meta: meta
+  }));
+
+  // Линия маршрута
+  mctx.strokeStyle = 'rgba(212, 162, 89, 0.5)';
+  mctx.lineWidth = 2;
+  mctx.setLineDash([6, 8]);
+  mctx.beginPath();
+  points.forEach((p, i) => {
+    if (i === 0) mctx.moveTo(p.x, p.y);
+    else mctx.lineTo(p.x, p.y);
+  });
+  mctx.stroke();
+  mctx.setLineDash([]);
+
+  // Точки маршрута
+  const t = Date.now() / 1000;
+  points.forEach((p, i) => {
+    const levelId = p.meta.id;
+    const isUnlocked = levelId <= playerProgress;
+    const isPassed = levelId < playerProgress;
+
+    const pulse = isUnlocked && !isPassed
+      ? 1 + Math.sin(t * 3 + i) * 0.1
+      : 1;
+
+    const r = 22 * pulse;
+
+    // Свечение для доступных
+    if (isUnlocked) {
+      const glow = mctx.createRadialGradient(p.x, p.y, r * 0.3, p.x, p.y, r * 2);
+      glow.addColorStop(0, isPassed ? 'rgba(110, 231, 135, 0.4)' : 'rgba(255, 220, 130, 0.5)');
+      glow.addColorStop(1, 'rgba(255, 220, 130, 0)');
+      mctx.fillStyle = glow;
+      mctx.beginPath();
+      mctx.arc(p.x, p.y, r * 2, 0, Math.PI * 2);
+      mctx.fill();
+    }
+
+    // Медальон
+    const grad = mctx.createRadialGradient(p.x - 5, p.y - 5, 2, p.x, p.y, r);
+    if (isPassed) {
+      grad.addColorStop(0, '#a4ffb4');
+      grad.addColorStop(1, '#2e8b57');
+    } else if (isUnlocked) {
+      grad.addColorStop(0, '#ffd166');
+      grad.addColorStop(1, '#a87c37');
+    } else {
+      grad.addColorStop(0, '#3a4a5a');
+      grad.addColorStop(1, '#1a2a3a');
+    }
+    mctx.fillStyle = grad;
+    mctx.beginPath();
+    mctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    mctx.fill();
+
+    // Обводка
+    mctx.strokeStyle = isUnlocked ? '#ffd166' : '#1e3a55';
+    mctx.lineWidth = 2;
+    mctx.stroke();
+
+    // Иконка
+    mctx.font = '22px sans-serif';
+    mctx.textAlign = 'center';
+    mctx.textBaseline = 'middle';
+    mctx.fillStyle = '#ffffff';
+    mctx.fillText(p.meta.icon, p.x, p.y);
+
+    // Номер уровня
+    mctx.font = 'bold 11px monospace';
+    mctx.fillStyle = isUnlocked ? '#ffffff' : '#7a8a9a';
+    mctx.fillText('Ур. ' + levelId, p.x, p.y + r + 14);
+
+    // Название
+    mctx.font = '11px monospace';
+    mctx.fillStyle = isUnlocked ? '#7fd6ff' : '#5a6a7a';
+    mctx.fillText(p.meta.name, p.x, p.y + r + 28);
+
+    // Замок для закрытых
+    if (!isUnlocked) {
+      mctx.font = '14px sans-serif';
+      mctx.fillStyle = '#7a8a9a';
+      mctx.fillText('🔒', p.x + r * 0.7, p.y - r * 0.7);
+    }
+
+    // Галочка для пройденных
+    if (isPassed) {
+      mctx.font = '14px sans-serif';
+      mctx.fillStyle = '#2e8b57';
+      mctx.fillText('✅', p.x + r * 0.7, p.y - r * 0.7);
+    }
+  });
+
+  // Подсказка про порог
+  mctx.font = '11px monospace';
+  mctx.fillStyle = '#ffd166';
+  mctx.textAlign = 'center';
+  mctx.fillText('Для открытия следующего сектора нужно ≥ 80%', mW / 2, mH - 12);
+}
+
+// Клик по карте — выбор уровня
+el('mapCanvas').addEventListener('click', (e) => {
+  const mapCanvas = el('mapCanvas');
+  const rect = mapCanvas.getBoundingClientRect();
+  const scaleX = mapCanvas.width / rect.width;
+  const scaleY = mapCanvas.height / rect.height;
+  const clickX = (e.clientX - rect.left) * scaleX;
+  const clickY = (e.clientY - rect.top) * scaleY;
+
+  const mW = mapCanvas.width;
+  const mH = mapCanvas.height;
+
+  for (const meta of LEVELS_META) {
+    const px = meta.mapX * mW;
+    const py = (1 - meta.mapY) * mH;
+    const dist = Math.hypot(clickX - px, clickY - py);
+    if (dist <= 40) {
+      if (meta.id <= playerProgress) {
+        // Уровень доступен
+        currentLevel = meta.id;
+        startLevel(meta.id);
+      } else {
+        // Уровень закрыт
+        showToast('🔒 Сектор закрыт. Пройдите предыдущие на 80%+');
+      }
+      return;
+    }
+  }
+});
+
+// Обновление карты каждые ~200мс (для пульсации)
+setInterval(() => {
+  if (screens.map && screens.map.classList.contains('show')) {
+    drawMapCanvas();
+  }
+}, 200);
+
+// ================================================================
+//  ЗАГРУЗКА И СТАРТ УРОВНЯ
+// ================================================================
+let currentLevelData = null;
+
+function startLevel(levelId) {
+  if (!LEVELS[levelId]) {
+    showToast('⚠️ Уровень ' + levelId + ' не найден');
+    return;
+  }
+  currentLevelData = LEVELS[levelId];
+
+  // Обновляем мир из данных уровня
+  updateWorldFromLevel(currentLevelData);
+
+  // Стартуем
+  prepareRun();
+  showScreen(null);
+
+  // Обновляем музыку уровня
+  if (gameMusic) {
+    const musicSrc = currentLevelData.music || 'music/level1.mp3';
+    const source = gameMusic.querySelector('source');
+    if (source) source.src = musicSrc;
+    gameMusic.load();
+  }
+}
+
+// Эти переменные заполняются из уровня
+let WORLD_W = 3200;
+let WORLD_H = 1100;
+let FLOOR_Y = 1060;
+let walls = [];
+let finish = { x: 3080, y: 120, r: 30 };
+let rings = [];           // кольца уровня
+let ringsRequired = 0;
+let levelType = 'maze';
+let levelBgColor = '#1a3a58';
+let levelGridColor = 'rgba(30, 58, 85, 0.18)';
+let levelFloorColor = '#2e4a2e';
+let levelFloorTopColor = '#6b8e5a';
+let levelHillColor = '#3f6039';
+let levelWaterTint = 'rgba(100, 180, 255, 0.04)';
+
+function updateWorldFromLevel(data) {
+  WORLD_W = data.worldW || 3200;
+  WORLD_H = data.worldH || 1100;
+  FLOOR_Y = data.floorY || 1060;
+
+  walls = (data.walls || []).slice();
+  finish = data.finish || { x: 3080, y: 120, r: 30 };
+
+  // Кольца
+  rings = (data.rings || []).map((r, i) => ({
+    x: r.x,
+    y: r.y,
+    r: r.r || 45,
+    id: r.id || i + 1,
+    passed: false
+  }));
+  ringsRequired = data.ringsRequired || rings.length;
+  levelType = data.levelType || 'maze';
+
+  // Цвета
+  levelBgColor = data.bgColor || '#1a3a58';
+  levelGridColor = data.gridColor || 'rgba(30, 58, 85, 0.18)';
+  levelFloorColor = data.floorColor || '#2e4a2e';
+  levelFloorTopColor = data.floorTopColor || '#6b8e5a';
+  levelHillColor = data.hillColor || '#3f6039';
+  levelWaterTint = data.waterTint || 'rgba(100, 180, 255, 0.04)';
+
+  // Параметры дрона
+  if (data.maxThrust) sub.maxThrust = data.maxThrust;
+  if (data.thrustAccel) sub.thrustAccel = data.thrustAccel;
+  if (data.maxAngVel) sub.maxAngVel = data.maxAngVel;
+  if (data.angAccel) sub.angAccel = data.angAccel;
+  if (data.fallBlend) sub.fallBlend = data.fallBlend;
+
+  // Рыбы
+  fishes.length = 0;
+  (data.fishes || []).forEach(f => {
+    fishes.push({
+      x: f.x,
+      y: f.y,
+      r: f.r || 14,
+      vx: f.vx || 30,
+      vy: f.vy || 15,
+      type: f.type || 'normal',
+      wiggle: Math.random() * Math.PI * 2,
+      dir: f.vx >= 0 ? 1 : -1,
+      tailPhase: Math.random() * Math.PI * 2,
+      anglerPhase: Math.random() * Math.PI * 2,
+      mouthPhase: Math.random() * Math.PI * 2
+    });
+  });
+
+  // Старт
+  sub.x = data.start ? data.start.x : 100;
+  sub.y = data.start ? data.start.y : 980;
+  sub.vx = 0;
+  sub.vy = 0;
+  sub.angle = 0;
+  sub.angVel = 0;
+  sub.hp = MAX_HP;
+  sub.invuln = 0;
+  sub.animTime = 0;
+  sub.propellerAngle = 0;
+  sub.bubbleTimer = 0;
+
+  // Сброс колец
+  currentRingIndex = 0;
+
+  // Камера
+  updateZoom();
+  updateCamera();
+}
+
+// ================================================================
+//  ПАУЗА
+// ================================================================
+function togglePause() {
+  if (!started) return;
+  paused = !paused;
+  el('pauseOverlay').classList.toggle('show', paused);
+  if (paused) {
+    if (menuMusic) menuMusic.pause();
+    if (gameMusic) gameMusic.pause();
+  } else if (musicEnabled) {
+    switchMusic('game');
+  }
+}
+
+el('pauseBtn').addEventListener('click', togglePause);
+el('pauseResume').addEventListener('click', () => {
+  paused = false; el('pauseOverlay').classList.remove('show');
+  if (musicEnabled) switchMusic('game');
+});
+el('pauseRestart').addEventListener('click', () => {
+  paused = false; el('pauseOverlay').classList.remove('show');
+  startLevel(currentLevel);
+});
+el('pauseChangePlayer').addEventListener('click', () => {
+  paused = false; el('pauseOverlay').classList.remove('show');
+  goToSelectPlayer();
+});
+el('pauseExit').addEventListener('click', () => {
+  paused = false; el('pauseOverlay').classList.remove('show');
+  goToMap();
+});
+el('restartBtn').addEventListener('click', () => { startLevel(currentLevel); });
+el('exitBtn').addEventListener('click', goToMap);
