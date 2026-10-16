@@ -200,32 +200,146 @@ function drawWall(w) {
   if (len < 1) return;
   const ang = Math.atan2(dy, dx);
   const thickness = 22;
+  const halfT = thickness / 2;
 
   ctx.save();
   ctx.translate(w.x1, w.y1);
   ctx.rotate(ang);
 
-  ctx.fillStyle = '#6b5437';
-  ctx.fillRect(0, -thickness / 2, len, thickness);
+  // ===== ОСНОВНОЙ ПРЯМОУГОЛЬНИК =====
+  // Ограничиваем кладку так, чтобы линии не выходили за края
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, -halfT, len, thickness);
+  ctx.clip();   // ← ОБРЕЗАЕМ всё, что выходит за прямоугольник
 
+  // Фон стены
+  ctx.fillStyle = '#6b5437';
+  ctx.fillRect(0, -halfT, len, thickness);
+
+  // ===== КЛАДКА МАЙЯ =====
   ctx.strokeStyle = 'rgba(30, 18, 8, 0.7)';
   ctx.lineWidth = 1;
   const blockH = 14, blockW = 32;
-  for (let y = -thickness / 2 + blockH; y < thickness / 2; y += blockH) {
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(len, y); ctx.stroke();
+
+  // Горизонтальные линии
+  for (let y = -halfT + blockH; y < halfT; y += blockH) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(len, y);
+    ctx.stroke();
   }
+
+  // Вертикальные швы (смещённые)
   let bc = 0;
   for (let x = 0; x < len; x += blockW) {
     bc++;
     if (bc % 2 === 0) continue;
-    for (let y = -thickness / 2; y < thickness / 2; y += blockH) {
-      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + blockH); ctx.stroke();
+    for (let y = -halfT; y < halfT; y += blockH) {
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x, y + blockH);
+      ctx.stroke();
     }
   }
+
+  // Второй ряд вертикальных швов со смещением
+  for (let x = blockW; x < len; x += blockW) {
+    for (let y = -halfT + blockH; y < halfT - blockH; y += blockH * 2) {
+      ctx.beginPath();
+      ctx.moveTo(x, y + blockH * 0.5);
+      ctx.lineTo(x, y + blockH * 1.5);
+      ctx.stroke();
+    }
+  }
+
+  // ===== ИЕРОГЛИФЫ МАЙЯ =====
+  if (len > 80) {
+    const step = 70;
+    for (let x = step * 0.6; x < len - step * 0.6; x += step) {
+      const seed = (x + w.id.length * 13) % 97;
+      drawMayanGlyphToCtx(ctx, x, 0, 20, seed);
+    }
+  }
+
+  // ===== МОХ =====
+  ctx.strokeStyle = 'rgba(40, 80, 50, 0.55)';
+  ctx.lineWidth = 1.5;
+  for (let x = 0; x < len; x += 40) {
+    const r = hashNoise(x, 0, 7);
+    if (r > 0.6) {
+      ctx.beginPath();
+      ctx.moveTo(x, -halfT);
+      for (let k = 0; k < 6; k++) {
+        const t = k / 6;
+        ctx.lineTo(x + t * 18, -halfT + 2 + Math.sin(t * 6 + r * 10) * 2);
+      }
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(40, 80, 50, 0.35)';
+      ctx.beginPath();
+      ctx.ellipse(x + 9, -halfT + 2, 12, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // ===== ТРЕЩИНЫ =====
+  ctx.strokeStyle = 'rgba(20, 10, 0, 0.6)';
+  ctx.lineWidth = 1;
+  for (let x = 20; x < len; x += 90) {
+    const r = hashNoise(x, 0, 11);
+    if (r > 0.5) {
+      const sx = x + (r - 0.5) * 30;
+      ctx.beginPath();
+      ctx.moveTo(sx, -halfT + 2);
+      for (let k = 1; k <= 5; k++) {
+        const t = k / 5;
+        ctx.lineTo(sx + Math.sin(t * 8 + r * 5) * 3, -halfT + t * thickness);
+      }
+      ctx.stroke();
+    }
+  }
+
+  // Верхняя светлая полоса
   ctx.fillStyle = 'rgba(255, 220, 150, 0.15)';
-  ctx.fillRect(0, -thickness / 2, len, 3);
+  ctx.fillRect(0, -halfT, len, 3);
+
+  // Нижняя тёмная полоса
   ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
-  ctx.fillRect(0, thickness / 2 - 3, len, 3);
+  ctx.fillRect(0, halfT - 3, len, 3);
+
+  ctx.restore();   // ← ВЫХОДИМ ИЗ CLIP
+
+  // ===== КРУГЛЫЕ ТОРЦЫ СТЕНЫ =====
+  // Левый торец
+  ctx.beginPath();
+  ctx.arc(0, 0, halfT, 0, Math.PI * 2);
+  ctx.fillStyle = '#6b5437';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(30, 18, 8, 0.7)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Правый торец
+  ctx.beginPath();
+  ctx.arc(len, 0, halfT, 0, Math.PI * 2);
+  ctx.fillStyle = '#6b5437';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(30, 18, 8, 0.7)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // ===== ДЕКОРАТИВНЫЕ КОЛЬЦА НА ТОРЦАХ =====
+  // (чтобы торцы выглядели как часть кладки)
+  ctx.strokeStyle = 'rgba(255, 220, 150, 0.3)';
+  ctx.lineWidth = 1.5;
+
+  ctx.beginPath();
+  ctx.arc(0, 0, halfT * 0.6, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(len, 0, halfT * 0.6, 0, Math.PI * 2);
+  ctx.stroke();
 
   ctx.restore();
 }
