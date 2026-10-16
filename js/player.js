@@ -124,31 +124,7 @@ function setServerStatus(state, text) {
   if (opt) opt.textContent = text;
 }
 
-async function loadPlayerProgress() {
-  if (!currentPlayer) { playerProgress = 1; return; }
-  if (currentPlayer.source === 'nick') { playerProgress = 1; return; }
 
-  try {
-    const url = SERVER_URL + '?action=progress&klass=' +
-      encodeURIComponent(currentPlayer.klass) +
-      '&nick=' + encodeURIComponent(currentPlayer.short) +
-      '&device=' + encodeURIComponent(DEVICE_TYPE) +
-      '&t=' + Date.now();
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const json = await resp.json();
-    if (json.success && json.progress) {
-      playerProgress = Number(json.progress) || 1;
-      setServerStatus('online', 'Сервер: подключён');
-    } else {
-      playerProgress = 1;
-    }
-  } catch (err) {
-    console.error('Ошибка загрузки прогресса:', err);
-    playerProgress = 1;
-    setServerStatus('offline', 'Сервер: ошибка');
-  }
-}
 
 function goToSelectPlayer() {
   started = false; running = false; paused = false;
