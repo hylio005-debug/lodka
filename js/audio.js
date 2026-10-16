@@ -1,6 +1,46 @@
 // ================================================================
 //  js/audio.js — МУЗЫКА + ЗВУКИ (Web Audio API)
-//  Версия 3.3 — тихий мотор, громкие удары
+//  Версия 4.0 — все громкости в блоке AUDIO_SETTINGS
+// ================================================================
+
+// ================================================================
+//  ⚙️ НАСТРОЙКИ ЗВУКА — МЕНЯЙ ЗДЕСЬ
+//  Значения от 0.0 (тишина) до 1.0 (максимум).
+//  Меняй, сохраняй файл, обновляй игру (Ctrl+F5) — слышишь разницу.
+// ================================================================
+const AUDIO_SETTINGS = {
+  // ---------- ГРОМКОСТЬ ОТДЕЛЬНЫХ ЗВУКОВ ----------
+  // Удар о стену
+  wallHitVolume:      0.50,   // основной «бум». Рекомендую 0.3–0.7
+  wallHitVolume2:     0.25,   // «тело» удара. ~50% от основного
+
+  // Удар о рыбу
+  fishHitVolume:      0.40,   // основной тон
+  fishHitVolume2:     0.22,   // тревожная нотка
+
+  // Кольцо пройдено
+  ringVolume:         0.20,   // «динь»
+  ringVolume2:        0.12,   // второй тон
+
+  // Финиш
+  finishVolume:       0.20,   // каждая нота аккорда
+
+  // Смерть
+  deathVolume:        0.20,
+
+  // ---------- МОТОР ----------
+  motorVolume:        0.004,  // базовая громкость гула. Рекомендую 0.002–0.010
+  motorVolumeDynamic: 0.004,  // добавка при разгоне (умножается на скорость)
+  motorLfoAmount:     0.001,  // амплитуда «дыхания». Рекомендую 0.0005–0.003
+
+  // ---------- МУЗЫКА (mp3) ----------
+  menuMusicVolume:    0.5,    // громкость меню
+  gameMusicVolume:    0.45,   // громкость уровня
+
+  // ---------- ОБЩИЙ ----------
+  masterVolume:       1.0     // множитель для всего (0.0 – 1.0). 0.5 = в 2 раза тише всё
+};
+
 // ================================================================
 
 const menuMusic = document.getElementById('menuMusic');
@@ -17,7 +57,7 @@ function startMusicIfAllowed() {
   if (!musicEnabled || musicStarted) return;
   musicStarted = true;
   if (menuMusic) {
-    menuMusic.volume = 0.5;
+    menuMusic.volume = AUDIO_SETTINGS.menuMusicVolume * AUDIO_SETTINGS.masterVolume;
     menuMusic.play().catch(() => { musicStarted = false; });
   }
 }
@@ -27,10 +67,10 @@ function switchMusic(track) {
   if (gameMusic) gameMusic.pause();
   if (!musicEnabled) return;
   if (track === 'menu' && menuMusic) {
-    menuMusic.volume = 0.5;
+    menuMusic.volume = AUDIO_SETTINGS.menuMusicVolume * AUDIO_SETTINGS.masterVolume;
     menuMusic.play().catch(() => {});
   } else if (track === 'game' && gameMusic) {
-    gameMusic.volume = 0.45;
+    gameMusic.volume = AUDIO_SETTINGS.gameMusicVolume * AUDIO_SETTINGS.masterVolume;
     gameMusic.play().catch(() => {});
   }
 }
@@ -80,6 +120,7 @@ function unlockAudio() {
   }
 }
 
+// Универсальный тон — громкость умножается на masterVolume
 function playTone(freq, duration, type, volume, startDelay) {
   if (!soundEnabled || !audioCtx) return;
   const t0 = audioCtx.currentTime + (startDelay || 0);
@@ -88,7 +129,7 @@ function playTone(freq, duration, type, volume, startDelay) {
   osc.type = type || 'sine';
   osc.frequency.setValueAtTime(freq, t0);
   gain.gain.setValueAtTime(0, t0);
-  gain.gain.linearRampToValueAtTime(volume || 0.15, t0 + 0.01);
+  gain.gain.linearRampToValueAtTime((volume || 0.15) * AUDIO_SETTINGS.masterVolume, t0 + 0.01);
   gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
   osc.connect(gain);
   gain.connect(audioCtx.destination);
@@ -97,7 +138,7 @@ function playTone(freq, duration, type, volume, startDelay) {
 }
 
 // ================================================================
-//  УДАР О СТЕНУ — громкий мягкий «бум»
+//  УДАР О СТЕНУ
 // ================================================================
 function soundWallHit() {
   if (!soundEnabled || !audioCtx) return;
@@ -115,8 +156,9 @@ function soundWallHit() {
   filter.frequency.setValueAtTime(220, t0);
   filter.Q.value = 1;
 
+  const vol = AUDIO_SETTINGS.wallHitVolume * AUDIO_SETTINGS.masterVolume;
   gain.gain.setValueAtTime(0, t0);
-  gain.gain.linearRampToValueAtTime(0.28, t0 + 0.02);
+  gain.gain.linearRampToValueAtTime(vol, t0 + 0.02);
   gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.35);
 
   osc.connect(filter);
@@ -130,8 +172,9 @@ function soundWallHit() {
   osc2.type = 'sine';
   osc2.frequency.setValueAtTime(150, t0);
   osc2.frequency.exponentialRampToValueAtTime(70, t0 + 0.15);
+  const vol2 = AUDIO_SETTINGS.wallHitVolume2 * AUDIO_SETTINGS.masterVolume;
   gain2.gain.setValueAtTime(0, t0);
-  gain2.gain.linearRampToValueAtTime(0.14, t0 + 0.01);
+  gain2.gain.linearRampToValueAtTime(vol2, t0 + 0.01);
   gain2.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.2);
   osc2.connect(gain2);
   gain2.connect(audioCtx.destination);
@@ -140,7 +183,7 @@ function soundWallHit() {
 }
 
 // ================================================================
-//  УДАР О РЫБУ — резкий
+//  УДАР О РЫБУ
 // ================================================================
 function soundFishHit() {
   if (!soundEnabled || !audioCtx) return;
@@ -157,8 +200,9 @@ function soundFishHit() {
   filter.type = 'lowpass';
   filter.frequency.setValueAtTime(900, t0);
 
+  const vol = AUDIO_SETTINGS.fishHitVolume * AUDIO_SETTINGS.masterVolume;
   gain.gain.setValueAtTime(0, t0);
-  gain.gain.linearRampToValueAtTime(0.22, t0 + 0.01);
+  gain.gain.linearRampToValueAtTime(vol, t0 + 0.01);
   gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.28);
 
   osc.connect(filter);
@@ -172,8 +216,9 @@ function soundFishHit() {
   osc2.type = 'sine';
   osc2.frequency.setValueAtTime(320, t0 + 0.03);
   osc2.frequency.exponentialRampToValueAtTime(180, t0 + 0.25);
+  const vol2 = AUDIO_SETTINGS.fishHitVolume2 * AUDIO_SETTINGS.masterVolume;
   gain2.gain.setValueAtTime(0, t0 + 0.03);
-  gain2.gain.linearRampToValueAtTime(0.12, t0 + 0.05);
+  gain2.gain.linearRampToValueAtTime(vol2, t0 + 0.05);
   gain2.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.28);
   osc2.connect(gain2);
   gain2.connect(audioCtx.destination);
@@ -182,27 +227,28 @@ function soundFishHit() {
 }
 
 // ================================================================
-//  КОЛЬЦО — приятный «динь»
+//  КОЛЬЦО
 // ================================================================
 function soundRing() {
   if (!soundEnabled || !audioCtx) return;
-  playTone(880, 0.22, 'sine', 0.2, 0);
-  playTone(1320, 0.38, 'sine', 0.12, 0.08);
+  playTone(880, 0.22, 'sine', AUDIO_SETTINGS.ringVolume, 0);
+  playTone(1320, 0.38, 'sine', AUDIO_SETTINGS.ringVolume2, 0.08);
 }
 
 // ================================================================
-//  ФИНИШ — торжественный аккорд
+//  ФИНИШ
 // ================================================================
 function soundFinish() {
   if (!soundEnabled || !audioCtx) return;
-  playTone(523, 0.3, 'sine', 0.2, 0);
-  playTone(659, 0.3, 'sine', 0.2, 0.1);
-  playTone(784, 0.5, 'sine', 0.2, 0.2);
-  playTone(1046, 0.7, 'sine', 0.15, 0.3);
+  const v = AUDIO_SETTINGS.finishVolume;
+  playTone(523, 0.3, 'sine', v, 0);
+  playTone(659, 0.3, 'sine', v, 0.1);
+  playTone(784, 0.5, 'sine', v, 0.2);
+  playTone(1046, 0.7, 'sine', v * 0.75, 0.3);
 }
 
 // ================================================================
-//  СМЕРТЬ — падающий тон
+//  СМЕРТЬ
 // ================================================================
 function soundDeath() {
   if (!soundEnabled || !audioCtx) return;
@@ -212,7 +258,8 @@ function soundDeath() {
   osc.type = 'sawtooth';
   osc.frequency.setValueAtTime(600, t0);
   osc.frequency.exponentialRampToValueAtTime(80, t0 + 0.7);
-  gain.gain.setValueAtTime(0.2, t0);
+  const vol = AUDIO_SETTINGS.deathVolume * AUDIO_SETTINGS.masterVolume;
+  gain.gain.setValueAtTime(vol, t0);
   gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.75);
   osc.connect(gain);
   gain.connect(audioCtx.destination);
@@ -221,7 +268,7 @@ function soundDeath() {
 }
 
 // ================================================================
-//  МОТОР — очень тихий подводный гул
+//  МОТОР
 // ================================================================
 let motorOsc1 = null;
 let motorOsc2 = null;
@@ -252,13 +299,14 @@ function startMotor() {
 
   motorGain = audioCtx.createGain();
   motorGain.gain.setValueAtTime(0, t0);
-  motorGain.gain.linearRampToValueAtTime(0.008, t0 + 0.6);
+  const baseVol = AUDIO_SETTINGS.motorVolume * AUDIO_SETTINGS.masterVolume;
+  motorGain.gain.linearRampToValueAtTime(baseVol, t0 + 0.6);
 
   motorLfo = audioCtx.createOscillator();
   motorLfo.type = 'sine';
   motorLfo.frequency.setValueAtTime(0.4, t0);
   motorLfoGain = audioCtx.createGain();
-  motorLfoGain.gain.setValueAtTime(0.002, t0);
+  motorLfoGain.gain.setValueAtTime(AUDIO_SETTINGS.motorLfoAmount * AUDIO_SETTINGS.masterVolume, t0);
 
   motorLfo.connect(motorLfoGain);
   motorLfoGain.connect(motorGain.gain);
@@ -299,7 +347,8 @@ function updateMotorSound(intensity) {
     const t = audioCtx.currentTime;
     const i = Math.min(1, Math.max(0, intensity));
 
-    const vol = 0.005 + i * 0.008;
+    const vol = (AUDIO_SETTINGS.motorVolume + i * AUDIO_SETTINGS.motorVolumeDynamic)
+              * AUDIO_SETTINGS.masterVolume;
     motorGain.gain.cancelScheduledValues(t);
     motorGain.gain.linearRampToValueAtTime(vol, t + 0.2);
 
