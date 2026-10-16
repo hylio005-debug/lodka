@@ -5,7 +5,7 @@
 // ================================================================
 
 // ⚙️ НАСТРОЙКИ GITHUB
-const GITHUB_TOKEN = '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';
+const GITHUB_TOKEN = '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';
 const GITHUB_OWNER = 'hylio005-debug';
 const GITHUB_REPO  = 'lodka-leaderboard';
 const GITHUB_PATH  = 'leaderboard.json';
