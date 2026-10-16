@@ -1,13 +1,13 @@
-// ================================================================
-//  js/leaderboard.js — ЛИДЕРБОРД через Cloudflare Worker
-//  Версия 2.0 — GitHub вместо Google Sheets
-// ================================================================
 
-// ⚙️ URL Cloudflare Worker (из Шага 3)
-const LEADERBOARD_API = 'https://raspy-rice-519d.hylio005.workers.dev/';
+
+// ⚙️ URL Worker'а (для записи)
+const LEADERBOARD_API = 'https://raspy-rice-519d.hylio005.workers.dev';
+
+// ⚙️ URL лидерборда напрямую с GitHub (для чтения)
+const LEADERBOARD_RAW = 'https://raw.githubusercontent.com/hylio005-debug/lodka-leaderboard/main/leaderboard.json';
 
 // ================================================================
-//  ОТПРАВКА РЕЗУЛЬТАТА
+//  ОТПРАВКА РЕЗУЛЬТАТА (через Worker, no-cors)
 // ================================================================
 async function sendResult(level, accuracy) {
   if (!currentPlayer) return { ok: false, error: 'Нет игрока' };
@@ -21,23 +21,15 @@ async function sendResult(level, accuracy) {
   };
 
   try {
-    const resp = await fetch(LEADERBOARD_API, {
+    await fetch(LEADERBOARD_API, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(payload)
     });
-
-    if (!resp.ok) {
-      const errText = await resp.text();
-      return { ok: false, error: errText };
-    }
-
-    const json = await resp.json();
-    if (json.success) {
-      return { ok: true, data: json };
-    } else {
-      return { ok: false, error: json.error || 'Неизвестная ошибка' };
-    }
+    // В no-cors режиме мы не можем прочитать ответ.
+    // Но если запрос не упал с ошибкой — значит, отправлен.
+    return { ok: true };
   } catch (err) {
     console.error('Ошибка отправки:', err);
     return { ok: false, error: err.message };
@@ -45,25 +37,25 @@ async function sendResult(level, accuracy) {
 }
 
 // ================================================================
-//  ЗАГРУЗКА ПРОГРЕССА ИГРОКА
+//  ЗАГРУЗКА ПРОГРЕССА ИГРОКА (напрямую с GitHub raw)
 // ================================================================
 async function loadPlayerProgress() {
   if (!currentPlayer) { playerProgress = 1; return; }
   if (currentPlayer.source === 'nick') { playerProgress = 1; return; }
 
   try {
-    const resp = await fetch(LEADERBOARD_API + '?t=' + Date.now());
+    const resp = await fetch(LEADERBOARD_RAW + '?t=' + Date.now());
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
 
     const json = await resp.json();
-    if (!json.success || !json.data || !json.data.players) {
+    if (!json.players || !Array.isArray(json.players)) {
       playerProgress = 1;
       setServerStatus('online', 'Сервер: подключён');
       return;
     }
 
     const key = `${currentPlayer.klass}|${currentPlayer.short}|${DEVICE_TYPE}`;
-    const player = json.data.players.find(p => p.key === key);
+    const player = json.players.find(p => p.key === key);
 
     if (player) {
       playerProgress = Number(player.progress) || 1;
@@ -79,23 +71,20 @@ async function loadPlayerProgress() {
 }
 
 // ================================================================
-//  ЗАГРУЗКА ЛИДЕРБОРДА (топ-10)
+//  ЗАГРУЗКА ЛИДЕРБОРДА (напрямую с GitHub raw)
 // ================================================================
 async function loadLeaderboard() {
   const container = el('leaderboard-container');
+  if (!container) return;
   container.innerHTML = '<div class="empty-msg">Загрузка...</div>';
 
   try {
-    const resp = await fetch(LEADERBOARD_API + '?t=' + Date.now());
+    const resp = await fetch(LEADERBOARD_RAW + '?t=' + Date.now());
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
 
     const json = await resp.json();
-    if (!json.success || !json.data || !json.data.leaders) {
-      container.innerHTML = '<div class="empty-msg">Пока нет результатов.</div>';
-      return;
-    }
+    const leaders = json.leaders || [];
 
-    const leaders = json.data.leaders;
     if (!leaders.length) {
       container.innerHTML = '<div class="empty-msg">Пока нет результатов.</div>';
       return;
@@ -123,7 +112,7 @@ async function loadLeaderboard() {
     html += '</tbody></table>';
     container.innerHTML = html;
   } catch (err) {
-    console.error(err);
+    console.error('Ошибка загрузки лидерборда:', err);
     container.innerHTML = '<div class="empty-msg">⚠️ Не удалось загрузить таблицу</div>';
   }
 }
