@@ -1037,6 +1037,50 @@
     </div>
   </div>
 </div>
+  <!-- ПАУЗА -->
+<div id="pauseOverlay">
+  <div id="pausePanel">
+    <h2>⏸ Пауза</h2>
+    <button class="btn" id="pauseResume">▶ Продолжить</button>
+    <button class="btn secondary" id="pauseRestart">🔄 Рестарт</button>
+    <button class="btn secondary" id="pauseChangePlayer">👤 Сменить игрока</button>
+    <button class="btn danger" id="pauseExit">🚪 На карту</button>
+
+    <div id="soundSettings">
+      <h3>🔊 Звук</h3>
+      <div class="slider-row">
+        <label>Музыка</label>
+        <input type="range" id="volMusic" min="0" max="100" value="50">
+        <span class="slider-val" id="valMusic">50</span>
+      </div>
+      <div class="slider-row">
+        <label>Мотор</label>
+        <input type="range" id="volMotor" min="0" max="100" value="50">
+        <span class="slider-val" id="valMotor">50</span>
+      </div>
+      <div class="slider-row">
+        <label>Удары</label>
+        <input type="range" id="volHits" min="0" max="100" value="60">
+        <span class="slider-val" id="valHits">60</span>
+      </div>
+      <div class="slider-row">
+        <label>Эффекты</label>
+        <input type="range" id="volFx" min="0" max="100" value="50">
+        <span class="slider-val" id="valFx">50</span>
+      </div>
+      <div class="slider-row">
+        <label>Общая</label>
+        <input type="range" id="volMaster" min="0" max="100" value="100">
+        <span class="slider-val" id="valMaster">100</span>
+      </div>
+      <div class="sound-test-btns">
+        <button class="test-btn" id="testMotorBtn">▶ Мотор</button>
+        <button class="test-btn" id="testHitBtn">▶ Удар</button>
+        <button class="test-btn" id="testRingBtn">▶ Кольцо</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- ПОДКЛЮЧЕНИЕ СКРИПТОВ -->
 <script src="FIO.js"></script>
