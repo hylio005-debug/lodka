@@ -1,18 +1,9 @@
-// ================================================================
-//  js/leaderboard.js — ЛИДЕРБОРД v4.0
-//  Прямая запись в GitHub API (без Worker)
-//  ⚠️ ТОКЕН ВИДЕН В КОДЕ — только для учебного проекта
-// ================================================================
 
-// ⚙️ НАСТРОЙКИ GITHUB
-const GITHUB_TOKEN = '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';
-const GITHUB_OWNER = 'hylio005-debug';
-const GITHUB_REPO  = 'lodka-leaderboard';
-const GITHUB_PATH  = 'leaderboard.json';
-const GITHUB_BRANCH = 'main';
+// ⚙️ URL PHP-прокси (ваш домен)
+const LEADERBOARD_API = 'https://lodka777.online/api.php';
 
-const GITHUB_API = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}`;
-const GITHUB_RAW = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}/${GITHUB_PATH}`;
+// ⚙️ URL JSON напрямую с GitHub (для чтения)
+const LEADERBOARD_RAW = 'https://raw.githubusercontent.com/hylio005-debug/lodka-leaderboard/main/leaderboard.json';
 
 // ================================================================
 //  ОТПРАВКА РЕЗУЛЬТАТА
@@ -20,89 +11,28 @@ const GITHUB_RAW = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_R
 async function sendResult(level, accuracy) {
   if (!currentPlayer) return { ok: false, error: 'Нет игрока' };
 
+  const payload = {
+    klass: currentPlayer.klass,
+    nick: currentPlayer.short,
+    level: level,
+    accuracy: accuracy,
+    device: DEVICE_TYPE
+  };
+
   try {
-    // 1. Читаем текущий файл (получаем SHA)
-    const getResp = await fetch(GITHUB_API + '?t=' + Date.now(), {
-      headers: {
-        'Authorization': `Bearer ${GITHUB_TOKEN}`,
-        'Accept': 'application/vnd.github+json'
-      }
+    const resp = await fetch(LEADERBOARD_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     });
 
-    if (!getResp.ok) {
-      throw new Error('GitHub read error: ' + getResp.status);
+    if (!resp.ok) {
+      const errText = await resp.text();
+      return { ok: false, error: 'HTTP ' + resp.status + ': ' + errText };
     }
 
-    const getData = await getResp.json();
-    const currentJson = JSON.parse(atob(getData.content.replace(/\n/g, '')));
-    const currentSha = getData.sha;
-
-    if (!currentJson.players) currentJson.players = [];
-
-    // 2. Обновляем данные игрока
-    const key = `${currentPlayer.klass}|${currentPlayer.short}|${DEVICE_TYPE}`;
-    let player = currentJson.players.find(p => p.key === key);
-
-    if (!player) {
-      player = {
-        key: key,
-        klass: currentPlayer.klass,
-        nick: currentPlayer.short,
-        device: DEVICE_TYPE,
-        levels: [0, 0, 0, 0, 0],
-        progress: 1,
-        updated: new Date().toISOString()
-      };
-      currentJson.players.push(player);
-    }
-
-    const levelIdx = level - 1;
-    if (levelIdx >= 0 && levelIdx < 5) {
-      player.levels[levelIdx] = Number(accuracy);
-    }
-
-    // Правило ≥ 80% для разблокировки
-    const UNLOCK_THRESHOLD = 80;
-    if (Number(accuracy) >= UNLOCK_THRESHOLD) {
-      const nextLevel = level + 1;
-      if (nextLevel > player.progress && nextLevel <= 5) {
-        player.progress = nextLevel;
-      }
-      if (level === 5 && player.progress < 5) {
-        player.progress = 5;
-      }
-    }
-
-    player.updated = new Date().toISOString();
-
-    // 3. Пересчитываем лидерборд
-    currentJson.leaders = computeLeaders(currentJson.players);
-    currentJson.updated = new Date().toISOString();
-
-    // 4. Записываем обратно в GitHub
-    const newContent = btoa(unescape(encodeURIComponent(JSON.stringify(currentJson, null, 2))));
-
-    const putResp = await fetch(GITHUB_API, {
-      method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${GITHUB_TOKEN}`,
-        'Accept': 'application/vnd.github+json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        message: `Update ${currentPlayer.klass} ${currentPlayer.short} level ${level}: ${accuracy}%`,
-        content: newContent,
-        sha: currentSha,
-        branch: GITHUB_BRANCH
-      })
-    });
-
-    if (!putResp.ok) {
-      const errText = await putResp.text();
-      throw new Error('GitHub write error: ' + putResp.status + ' ' + errText);
-    }
-
-    return { ok: true };
+    const json = await resp.json();
+    return { ok: json.success === true, data: json };
   } catch (err) {
     console.error('Ошибка отправки:', err);
     return { ok: false, error: err.message };
@@ -117,7 +47,7 @@ async function loadPlayerProgress() {
   if (currentPlayer.source === 'nick') { playerProgress = 1; return; }
 
   try {
-    const resp = await fetch(GITHUB_RAW + '?t=' + Date.now());
+    const resp = await fetch(LEADERBOARD_RAW + '?t=' + Date.now());
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
 
     const json = await resp.json();
@@ -152,7 +82,7 @@ async function loadLeaderboard() {
   container.innerHTML = '<div class="empty-msg">Загрузка...</div>';
 
   try {
-    const resp = await fetch(GITHUB_RAW + '?t=' + Date.now());
+    const resp = await fetch(LEADERBOARD_RAW + '?t=' + Date.now());
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
 
     const json = await resp.json();
@@ -188,43 +118,6 @@ async function loadLeaderboard() {
     console.error('Ошибка загрузки лидерборда:', err);
     container.innerHTML = '<div class="empty-msg">⚠️ Не удалось загрузить таблицу</div>';
   }
-}
-
-// ================================================================
-//  ПЕРЕСЧЁТ ТОП-10
-// ================================================================
-function computeLeaders(players) {
-  if (!players || !players.length) return [];
-  const byPlayer = {};
-  for (const p of players) {
-    const key = `${p.klass}|${p.nick}`;
-    const passed = p.levels.filter(v => v > 0);
-    const avg = passed.length > 0
-      ? Math.round(passed.reduce((a, b) => a + b, 0) / passed.length)
-      : 0;
-    const entry = {
-      klass: p.klass,
-      nick: p.nick,
-      device: p.device,
-      levels: p.levels,
-      progress: p.progress,
-      passedCount: passed.length,
-      avg: avg
-    };
-    if (!byPlayer[key] ||
-        entry.avg > byPlayer[key].avg ||
-        (entry.avg === byPlayer[key].avg && entry.passedCount > byPlayer[key].passedCount)) {
-      byPlayer[key] = entry;
-    }
-  }
-  return Object.values(byPlayer)
-    .filter(l => l.passedCount > 0)
-    .sort((a, b) => {
-      if (b.avg !== a.avg) return b.avg - a.avg;
-      if (b.passedCount !== a.passedCount) return b.passedCount - a.passedCount;
-      return 0;
-    })
-    .slice(0, 10);
 }
 
 function escapeHtml(s) {
