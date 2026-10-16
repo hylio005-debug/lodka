@@ -1,18 +1,17 @@
 // ================================================================
-//  js/audio.js — МУЗЫКА + ЗВУКИ (Web Audio API)
-//  Версия 4.1 — мотор = подводный шелест (шум винта)
+//  js/audio.js — МУЗЫКА + ЗВУКИ (Web Audio API + mp3)
+//  Версия 5.0 — мотор через реальные mp3-сэмплы
 // ================================================================
 
 // ================================================================
 //  ⚙️ НАСТРОЙКИ ЗВУКА — МЕНЯЙ ЗДЕСЬ
-//  Значения от 0.0 (тишина) до 1.0 (максимум)
 // ================================================================
 const AUDIO_SETTINGS = {
   // ---------- УДАРЫ ----------
-  wallHitVolume:      0.50,   // удар о стену — основной «бум»
-  wallHitVolume2:     0.25,   // «тело» удара
-  fishHitVolume:      0.40,   // удар о рыбу
-  fishHitVolume2:     0.22,   // тревожная нотка
+  wallHitVolume:      0.50,
+  wallHitVolume2:     0.25,
+  fishHitVolume:      0.40,
+  fishHitVolume2:     0.22,
 
   // ---------- КОЛЬЦО / ФИНИШ / СМЕРТЬ ----------
   ringVolume:         0.20,
@@ -20,12 +19,17 @@ const AUDIO_SETTINGS = {
   finishVolume:       0.20,
   deathVolume:        0.20,
 
-  // ---------- МОТОР (ШЕЛЕСТ) ----------
-  motorVolume:        0.005,  // базовая громкость шелеста. Рекомендую 0.008–0.025
-  motorVolumeDynamic: 0.010,  // добавка при разгоне (умножается на скорость)
-  motorLfoAmount:     0.004,  // амплитуда «дыхания» шелеста
-  motorFilterFreq:    1500,    // частота фильтра: чем ВЫШЕ — тем ШИПЯЩЕЕ, чем НИЖЕ — тем ГЛУШЕ
-                              // 400 — очень глухой, 800 — мягкий шелест, 1500 — шипение воды
+  // ---------- МОТОР (mp3-сэмплы) ----------
+  // Три скорости. Громкость каждого слоя умножается на «вес»,
+  // который зависит от текущей скорости дрона.
+  motorLayer1Volume:  0.30,   // fan1 — самый тихий (медленно)
+  motorLayer2Volume:  0.40,   // fan2 — средний (обычная скорость)
+  motorLayer3Volume:  0.50,   // fan3 — громкий (разгон)
+
+  // При какой доле от maxThrust начинают звучать слои:
+  // 0.0–0.33 — в основном fan1, 0.33–0.66 — fan2, 0.66–1.0 — fan3
+  motorSpeedLow:      0.33,   // граница fan1/fan2
+  motorSpeedHigh:     0.66,   // граница fan2/fan3
 
   // ---------- МУЗЫКА (mp3) ----------
   menuMusicVolume:    0.5,
@@ -131,7 +135,7 @@ function playTone(freq, duration, type, volume, startDelay) {
 }
 
 // ================================================================
-//  УДАР О СТЕНУ
+//  УДАРЫ / КОЛЬЦО / ФИНИШ / СМЕРТЬ (синтез — как было)
 // ================================================================
 function soundWallHit() {
   if (!soundEnabled || !audioCtx) return;
@@ -175,9 +179,6 @@ function soundWallHit() {
   osc2.stop(t0 + 0.25);
 }
 
-// ================================================================
-//  УДАР О РЫБУ
-// ================================================================
 function soundFishHit() {
   if (!soundEnabled || !audioCtx) return;
   const t0 = audioCtx.currentTime;
@@ -219,9 +220,6 @@ function soundFishHit() {
   osc2.stop(t0 + 0.35);
 }
 
-// ================================================================
-//  КОЛЬЦО / ФИНИШ / СМЕРТЬ
-// ================================================================
 function soundRing() {
   if (!soundEnabled || !audioCtx) return;
   playTone(880, 0.22, 'sine', AUDIO_SETTINGS.ringVolume, 0);
@@ -255,68 +253,73 @@ function soundDeath() {
 }
 
 // ================================================================
-//  МОТОР — ПОДВОДНЫЙ ШЕЛЕСТ
-//  Шумовой буфер → фильтр → «шшшш», как винт в воде
+//  МОТОР — три mp3-сэмпла, плавное переключение по скорости
 // ================================================================
-let motorNoiseSource = null;
-let motorNoiseBuffer = null;
-let motorFilter = null;
-let motorGain = null;
-let motorLfo = null;
-let motorLfoGain = null;
+let motorBuffers = { fan1: null, fan2: null, fan3: null };
+let motorSources = { fan1: null, fan2: null, fan3: null };
+let motorGains = { fan1: null, fan2: null, fan3: null };
 let motorActive = false;
+let motorBuffersLoaded = false;
 
-// Генерирует буфер белого шума (2 секунды) — источник шелеста
-function createNoiseBuffer() {
-  if (motorNoiseBuffer) return motorNoiseBuffer;
-  const bufferSize = audioCtx.sampleRate * 2;
-  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) {
-    data[i] = Math.random() * 2 - 1;
+// Загружаем три mp3-сэмпла один раз
+async function loadMotorBuffers() {
+  if (motorBuffersLoaded || !audioCtx) return;
+  try {
+    const urls = {
+      fan1: 'music/fan/fan1.mp3',
+      fan2: 'music/fan/fan2.mp3',
+      fan3: 'music/fan/fan3.mp3'
+    };
+    const promises = Object.keys(urls).map(async (key) => {
+      const resp = await fetch(urls[key]);
+      const arrayBuffer = await resp.arrayBuffer();
+      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+      motorBuffers[key] = audioBuffer;
+    });
+    await Promise.all(promises);
+    motorBuffersLoaded = true;
+    console.log('✅ Мотор: 3 mp3-сэмпла загружены');
+  } catch (err) {
+    console.error('❌ Ошибка загрузки mp3 мотора:', err);
   }
-  motorNoiseBuffer = buffer;
-  return buffer;
 }
 
 function startMotor() {
   if (!soundEnabled || !audioCtx || motorActive) return;
+  if (!motorBuffersLoaded) {
+    // Если буферы не загружены — пробуем загрузить и запуститься после
+    loadMotorBuffers().then(() => {
+      if (!motorActive && soundEnabled && audioCtx) startMotor();
+    });
+    return;
+  }
+
   motorActive = true;
   const t0 = audioCtx.currentTime;
 
-  // Источник — зацикленный белый шум
-  motorNoiseSource = audioCtx.createBufferSource();
-  motorNoiseSource.buffer = createNoiseBuffer();
-  motorNoiseSource.loop = true;
+  // Создаём три источника, играющих одновременно
+  Object.keys(motorBuffers).forEach(key => {
+    const buf = motorBuffers[key];
+    if (!buf) return;
 
-  // Фильтр — превращает белый шум в мягкий шелест
-  motorFilter = audioCtx.createBiquadFilter();
-  motorFilter.type = 'lowpass';
-  motorFilter.frequency.setValueAtTime(AUDIO_SETTINGS.motorFilterFreq, t0);
-  motorFilter.Q.value = 0.7;
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
 
-  // Громкость
-  motorGain = audioCtx.createGain();
-  motorGain.gain.setValueAtTime(0, t0);
-  const baseVol = AUDIO_SETTINGS.motorVolume * AUDIO_SETTINGS.masterVolume;
-  motorGain.gain.linearRampToValueAtTime(baseVol, t0 + 0.5);
+    const gain = audioCtx.createGain();
+    gain.gain.setValueAtTime(0, t0);
 
-  // LFO — «дыхание» шелеста (волны громкости)
-  motorLfo = audioCtx.createOscillator();
-  motorLfo.type = 'sine';
-  motorLfo.frequency.setValueAtTime(0.7, t0);
-  motorLfoGain = audioCtx.createGain();
-  motorLfoGain.gain.setValueAtTime(AUDIO_SETTINGS.motorLfoAmount * AUDIO_SETTINGS.masterVolume, t0);
+    src.connect(gain);
+    gain.connect(audioCtx.destination);
 
-  motorLfo.connect(motorLfoGain);
-  motorLfoGain.connect(motorGain.gain);
+    src.start(t0);
 
-  motorNoiseSource.connect(motorFilter);
-  motorFilter.connect(motorGain);
-  motorGain.connect(audioCtx.destination);
+    motorSources[key] = src;
+    motorGains[key] = gain;
+  });
 
-  motorNoiseSource.start(t0);
-  motorLfo.start(t0);
+  // Стартовое распределение — все слои чуть-чуть
+  updateMotorSound(0);
 }
 
 function stopMotor() {
@@ -324,34 +327,68 @@ function stopMotor() {
   motorActive = false;
   try {
     const t = audioCtx.currentTime;
-    motorGain.gain.cancelScheduledValues(t);
-    motorGain.gain.setValueAtTime(motorGain.gain.value, t);
-    motorGain.gain.linearRampToValueAtTime(0, t + 0.3);
-    motorNoiseSource.stop(t + 0.4);
-    motorLfo.stop(t + 0.4);
+    Object.keys(motorGains).forEach(key => {
+      const g = motorGains[key];
+      if (g) {
+        g.gain.cancelScheduledValues(t);
+        g.gain.setValueAtTime(g.gain.value, t);
+        g.gain.linearRampToValueAtTime(0, t + 0.3);
+      }
+    });
+    Object.keys(motorSources).forEach(key => {
+      const s = motorSources[key];
+      if (s) {
+        try { s.stop(t + 0.4); } catch (e) {}
+      }
+    });
   } catch (e) {}
-  motorNoiseSource = null;
-  motorLfo = null;
-  motorLfoGain = null;
-  motorFilter = null;
-  motorGain = null;
+  motorSources = { fan1: null, fan2: null, fan3: null };
+  motorGains = { fan1: null, fan2: null, fan3: null };
 }
 
+// intensity — от 0 (стоит) до 1 (максимальная скорость)
 function updateMotorSound(intensity) {
-  if (!motorActive || !motorGain || !motorFilter) return;
+  if (!motorActive) return;
   try {
     const t = audioCtx.currentTime;
     const i = Math.min(1, Math.max(0, intensity));
+    const master = AUDIO_SETTINGS.masterVolume;
 
-    const vol = (AUDIO_SETTINGS.motorVolume + i * AUDIO_SETTINGS.motorVolumeDynamic)
-              * AUDIO_SETTINGS.masterVolume;
-    motorGain.gain.cancelScheduledValues(t);
-    motorGain.gain.linearRampToValueAtTime(vol, t + 0.2);
+    // Веса трёх слоёв в зависимости от скорости
+    let w1 = 0, w2 = 0, w3 = 0;
+    const low = AUDIO_SETTINGS.motorSpeedLow;
+    const high = AUDIO_SETTINGS.motorSpeedHigh;
 
-    // При разгоне шелест становится чуть «шипящее» — фильтр открывается
-    const freq = AUDIO_SETTINGS.motorFilterFreq + i * 400;
-    motorFilter.frequency.setValueAtTime(freq, t);
+    if (i <= low) {
+      // Только fan1 — тихий
+      w1 = 1 - (i / low) * 0.5;   // от 1.0 к 0.5
+    } else if (i <= high) {
+      // Переход fan1 → fan2
+      const k = (i - low) / (high - low);   // 0..1
+      w1 = 0.5 * (1 - k);
+      w2 = k;
+    } else {
+      // Переход fan2 → fan3
+      const k = (i - high) / (1 - high);
+      w2 = 1 - k;
+      w3 = k;
+    }
+
+    const v1 = w1 * AUDIO_SETTINGS.motorLayer1Volume * master;
+    const v2 = w2 * AUDIO_SETTINGS.motorLayer2Volume * master;
+    const v3 = w3 * AUDIO_SETTINGS.motorLayer3Volume * master;
+
+    if (motorGains.fan1) motorGains.fan1.gain.linearRampToValueAtTime(v1, t + 0.15);
+    if (motorGains.fan2) motorGains.fan2.gain.linearRampToValueAtTime(v2, t + 0.15);
+    if (motorGains.fan3) motorGains.fan3.gain.linearRampToValueAtTime(v3, t + 0.15);
   } catch (e) {}
 }
+
+// Предзагрузка mp3 при первом клике (unlockAudio)
+const _originalUnlockAudio = unlockAudio;
+unlockAudio = function() {
+  _originalUnlockAudio();
+  loadMotorBuffers();
+};
 
 updateMuteIcon();
