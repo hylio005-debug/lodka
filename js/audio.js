@@ -6,6 +6,11 @@
 // ================================================================
 //  ⚙️ НАСТРОЙКИ ЗВУКА — МЕНЯЙ ЗДЕСЬ
 // ================================================================
+// ================================================================
+//  ⚙️ НАСТРОЙКИ ЗВУКА
+//  Базовые значения — а ползунки в игре умножают их.
+//  То есть: итоговая_громкость = базовая × ползунок × masterVolume
+// ================================================================
 const AUDIO_SETTINGS = {
   // ---------- УДАРЫ ----------
   wallHitVolume:      0.50,
@@ -19,25 +24,63 @@ const AUDIO_SETTINGS = {
   finishVolume:       0.20,
   deathVolume:        0.20,
 
-  // ---------- МОТОР (mp3-сэмплы) ----------
-  // Три скорости. Громкость каждого слоя умножается на «вес»,
-  // который зависит от текущей скорости дрона.
-  motorLayer1Volume:  0.30,   // fan1 — самый тихий (медленно)
-  motorLayer2Volume:  0.40,   // fan2 — средний (обычная скорость)
-  motorLayer3Volume:  0.50,   // fan3 — громкий (разгон)
+  // ---------- МОТОР ----------
+  motorLayer1Volume:  0.30,
+  motorLayer2Volume:  0.40,
+  motorLayer3Volume:  0.50,
+  motorSpeedLow:      0.33,
+  motorSpeedHigh:     0.66,
 
-  // При какой доле от maxThrust начинают звучать слои:
-  // 0.0–0.33 — в основном fan1, 0.33–0.66 — fan2, 0.66–1.0 — fan3
-  motorSpeedLow:      0.33,   // граница fan1/fan2
-  motorSpeedHigh:     0.66,   // граница fan2/fan3
-
-  // ---------- МУЗЫКА (mp3) ----------
+  // ---------- МУЗЫКА ----------
   menuMusicVolume:    0.5,
   gameMusicVolume:    0.45,
 
   // ---------- ОБЩИЙ ----------
   masterVolume:       1.0
 };
+
+// ================================================================
+//  🎚️ ПОЛЬЗОВАТЕЛЬСКИЕ МНОЖИТЕЛИ (из ползунков)
+//  Значения 0..1. Сохраняются в localStorage.
+// ================================================================
+const USER_VOL = {
+  music:  0.5,
+  motor:  0.5,
+  hits:   0.6,
+  fx:     0.5,
+  master: 1.0
+};
+
+try {
+  const saved = localStorage.getItem('pogruzhenie_volumes');
+  if (saved) {
+    const parsed = JSON.parse(saved);
+    Object.assign(USER_VOL, parsed);
+  }
+} catch (e) {}
+
+function saveUserVolume() {
+  try {
+    localStorage.setItem('pogruzhenie_volumes', JSON.stringify(USER_VOL));
+  } catch (e) {}
+}
+
+// Итоговая громкость музыки = базовая × ползунок_музыки × ползунок_общей
+function musicVolumeMultiplier() {
+  return USER_VOL.music * USER_VOL.master;
+}
+// Итоговая громкость ударов
+function hitsVolumeMultiplier() {
+  return USER_VOL.hits * USER_VOL.master;
+}
+// Итоговая громкость эффектов (кольцо, финиш, смерть)
+function fxVolumeMultiplier() {
+  return USER_VOL.fx * USER_VOL.master;
+}
+// Итоговая громкость мотора
+function motorVolumeMultiplier() {
+  return USER_VOL.motor * USER_VOL.master;
+}
 
 // ================================================================
 
