@@ -529,8 +529,8 @@ if (dist < pushRadius) {
   }
 
   // Дополнительный импульс наружу
-  sub.vx += ux * 80;
-  sub.vy += uy * 80;
+  sub.vx += ux * 40;
+  sub.vy += uy * 40;
 }
   }
 
