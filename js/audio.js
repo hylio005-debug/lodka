@@ -238,52 +238,61 @@ let motorLfo = null;
 let motorLfoGain = null;
 let motorActive = false;
 
+// ================================================================
+//  МОТОР — ОЧЕНЬ ТИХИЙ ФОН
+//  Версия 3.3 — убран верхний тон, снижена громкость в 2.5 раза
+// ================================================================
+let motorOsc1 = null;
+let motorOsc2 = null;
+let motorFilter = null;
+let motorGain = null;
+let motorLfo = null;
+let motorLfoGain = null;
+let motorActive = false;
+
 function startMotor() {
   if (!soundEnabled || !audioCtx || motorActive) return;
   motorActive = true;
   const t0 = audioCtx.currentTime;
 
+  // Только ДВА низких тона — без верхнего, который дребезжит
   motorOsc1 = audioCtx.createOscillator();
   motorOsc2 = audioCtx.createOscillator();
-  motorOsc3 = audioCtx.createOscillator();
 
   motorOsc1.type = 'sine';
-  motorOsc1.frequency.setValueAtTime(38, t0);
+  motorOsc1.frequency.setValueAtTime(35, t0);   // очень низкий
 
   motorOsc2.type = 'sine';
-  motorOsc2.frequency.setValueAtTime(57, t0);
+  motorOsc2.frequency.setValueAtTime(52, t0);   // чуть выше, квинта
 
-  motorOsc3.type = 'triangle';
-  motorOsc3.frequency.setValueAtTime(76, t0);
-
+  // Фильтр режет всё выше 120 Гц — оставляем только глухой низ
   motorFilter = audioCtx.createBiquadFilter();
   motorFilter.type = 'lowpass';
-  motorFilter.frequency.setValueAtTime(160, t0);
-  motorFilter.Q.value = 0.6;
+  motorFilter.frequency.setValueAtTime(120, t0);
+  motorFilter.Q.value = 0.5;
 
   motorGain = audioCtx.createGain();
   motorGain.gain.setValueAtTime(0, t0);
-  // ТИШЕ: 0.02 вместо 0.04
-  motorGain.gain.linearRampToValueAtTime(0.02, t0 + 0.5);
+  // ГРОМКОСТЬ: 0.008 — очень тихо (было 0.02)
+  motorGain.gain.linearRampToValueAtTime(0.008, t0 + 0.6);
 
+  // Очень мягкое «дыхание»
   motorLfo = audioCtx.createOscillator();
   motorLfo.type = 'sine';
-  motorLfo.frequency.setValueAtTime(0.5, t0);
+  motorLfo.frequency.setValueAtTime(0.4, t0);
   motorLfoGain = audioCtx.createGain();
-  motorLfoGain.gain.setValueAtTime(0.006, t0);   // меньше амплитуда
+  motorLfoGain.gain.setValueAtTime(0.002, t0);   // меньше амплитуда
 
   motorLfo.connect(motorLfoGain);
   motorLfoGain.connect(motorGain.gain);
 
   motorOsc1.connect(motorFilter);
   motorOsc2.connect(motorFilter);
-  motorOsc3.connect(motorFilter);
   motorFilter.connect(motorGain);
   motorGain.connect(audioCtx.destination);
 
   motorOsc1.start(t0);
   motorOsc2.start(t0);
-  motorOsc3.start(t0);
   motorLfo.start(t0);
 }
 
@@ -297,12 +306,10 @@ function stopMotor() {
     motorGain.gain.linearRampToValueAtTime(0, t + 0.3);
     motorOsc1.stop(t + 0.4);
     motorOsc2.stop(t + 0.4);
-    motorOsc3.stop(t + 0.4);
     motorLfo.stop(t + 0.4);
   } catch (e) {}
   motorOsc1 = null;
   motorOsc2 = null;
-  motorOsc3 = null;
   motorLfo = null;
   motorLfoGain = null;
   motorFilter = null;
@@ -315,16 +322,17 @@ function updateMotorSound(intensity) {
     const t = audioCtx.currentTime;
     const i = Math.min(1, Math.max(0, intensity));
 
-    // ТИШЕ: 0.015 + i * 0.02 вместо 0.025 + i * 0.035
-    const vol = 0.015 + i * 0.02;
+    // ГРОМКОСТЬ: 0.005 + i * 0.008 (максимум 0.013, было до 0.06)
+    const vol = 0.005 + i * 0.008;
     motorGain.gain.cancelScheduledValues(t);
-    motorGain.gain.linearRampToValueAtTime(vol, t + 0.15);
+    motorGain.gain.linearRampToValueAtTime(vol, t + 0.2);
 
-    if (motorOsc1) motorOsc1.frequency.setValueAtTime(38 + i * 8, t);
-    if (motorOsc2) motorOsc2.frequency.setValueAtTime(57 + i * 12, t);
-    if (motorOsc3) motorOsc3.frequency.setValueAtTime(76 + i * 16, t);
+    // Частота немного растёт при разгоне — но не сильно
+    if (motorOsc1) motorOsc1.frequency.setValueAtTime(35 + i * 5, t);
+    if (motorOsc2) motorOsc2.frequency.setValueAtTime(52 + i * 8, t);
 
-    motorFilter.frequency.setValueAtTime(160 + i * 80, t);
+    // Фильтр почти не открывается — держим глухой звук
+    motorFilter.frequency.setValueAtTime(120 + i * 40, t);
   } catch (e) {}
 }
 
