@@ -239,7 +239,6 @@ function prepareRun() {
   running = true;
   checkOrientation();
 }
-
 function generateDecorations() {
   seaFloorHills = [];
   for (let x = 0; x < 3200; x += 180) {
@@ -248,6 +247,29 @@ function generateDecorations() {
       r: 60 + Math.random() * 80,
       h: 20 + Math.random() * 30
     });
+  }
+
+  // Водоросли
+  seaweeds = [];
+  for (let x = 40; x < WORLD_W - 40; x += 90 + Math.random() * 60) {
+    let tooClose = false;
+    for (const w of walls) {
+      if (w.x1 === w.x2 && Math.abs(w.x1 - x) < 40) { tooClose = true; break; }
+    }
+    if (tooClose) continue;
+
+    const count = 1 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < count; i++) {
+      seaweeds.push({
+        x: x + (Math.random() - 0.5) * 40,
+        baseY: FLOOR_Y + 6,
+        height: 60 + Math.random() * 90,
+        width: 6 + Math.random() * 5,
+        phase: Math.random() * Math.PI * 2,
+        speed: 0.8 + Math.random() * 0.7,
+        color: Math.random() < 0.5 ? '#2e8b57' : '#3cb371'
+      });
+    }
   }
 }
 
