@@ -1,13 +1,16 @@
+// ================================================================
+//  js/leaderboard.js — ЛИДЕРБОРД v3.0
+//  Запись: Worker (no-cors), Чтение: GitHub raw напрямую
+// ================================================================
 
-
-// ⚙️ URL Worker'а (для записи)
+// URL Worker'а (для записи)
 const LEADERBOARD_API = 'https://raspy-rice-519d.hylio005.workers.dev';
 
-// ⚙️ URL лидерборда напрямую с GitHub (для чтения)
+// URL JSON напрямую с GitHub (для чтения)
 const LEADERBOARD_RAW = 'https://raw.githubusercontent.com/hylio005-debug/lodka-leaderboard/main/leaderboard.json';
 
 // ================================================================
-//  ОТПРАВКА РЕЗУЛЬТАТА (через Worker, no-cors)
+//  ОТПРАВКА РЕЗУЛЬТАТА (no-cors — данные уходят, ответ не читаем)
 // ================================================================
 async function sendResult(level, accuracy) {
   if (!currentPlayer) return { ok: false, error: 'Нет игрока' };
@@ -27,8 +30,6 @@ async function sendResult(level, accuracy) {
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(payload)
     });
-    // В no-cors режиме мы не можем прочитать ответ.
-    // Но если запрос не упал с ошибкой — значит, отправлен.
     return { ok: true };
   } catch (err) {
     console.error('Ошибка отправки:', err);
@@ -37,7 +38,7 @@ async function sendResult(level, accuracy) {
 }
 
 // ================================================================
-//  ЗАГРУЗКА ПРОГРЕССА ИГРОКА (напрямую с GitHub raw)
+//  ЗАГРУЗКА ПРОГРЕССА (напрямую с GitHub raw)
 // ================================================================
 async function loadPlayerProgress() {
   if (!currentPlayer) { playerProgress = 1; return; }
