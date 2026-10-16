@@ -207,4 +207,292 @@ function soundFishHit() {
   gain2.gain.linearRampToValueAtTime(vol2, t0 + 0.05);
   gain2.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.28);
   osc2.connect(gain2); gain2.connect(audioCtx.destination);
-  osc2.start(t0 + 0.
+  osc2.start(t0 + 0.03); osc2.stop(t0 + 0.35);
+}
+
+function soundRing() {
+  if (!soundEnabled || !audioCtx) return;
+  const m = fxVolumeMultiplier();
+  playTone(880, 0.22, 'sine', AUDIO_SETTINGS.ringVolume * m, 0);
+  playTone(1320, 0.38, 'sine', AUDIO_SETTINGS.ringVolume2 * m, 0.08);
+}
+
+function soundFinish() {
+  if (!soundEnabled || !audioCtx) return;
+  const v = AUDIO_SETTINGS.finishVolume * fxVolumeMultiplier();
+  playTone(523, 0.3, 'sine', v, 0);
+  playTone(659, 0.3, 'sine', v, 0.1);
+  playTone(784, 0.5, 'sine', v, 0.2);
+  playTone(1046, 0.7, 'sine', v * 0.75, 0.3);
+}
+
+function soundDeath() {
+  if (!soundEnabled || !audioCtx) return;
+  const t0 = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(600, t0);
+  osc.frequency.exponentialRampToValueAtTime(80, t0 + 0.7);
+  const vol = AUDIO_SETTINGS.deathVolume * fxVolumeMultiplier();
+  gain.gain.setValueAtTime(vol, t0);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.75);
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.start(t0); osc.stop(t0 + 0.8);
+}
+
+// ================================================================
+//  МОТОР — mp3
+// ================================================================
+let motorBuffers = { fan1: null, fan2: null, fan3: null };
+let motorSources = { fan1: null, fan2: null, fan3: null };
+let motorGains = { fan1: null, fan2: null, fan3: null };
+let motorActive = false;
+let motorBuffersLoaded = false;
+
+async function loadMotorBuffers() {
+  if (motorBuffersLoaded || !audioCtx) return;
+  try {
+    const urls = {
+      fan1: 'music/fan/fan1.mp3',
+      fan2: 'music/fan/fan2.mp3',
+      fan3: 'music/fan/fan3.mp3'
+    };
+    const promises = Object.keys(urls).map(async (key) => {
+      const resp = await fetch(urls[key]);
+      const arrayBuffer = await resp.arrayBuffer();
+      motorBuffers[key] = await audioCtx.decodeAudioData(arrayBuffer);
+    });
+    await Promise.all(promises);
+    motorBuffersLoaded = true;
+    console.log('✅ Мотор: 3 mp3-сэмпла загружены');
+  } catch (err) {
+    console.error('❌ Ошибка загрузки mp3 мотора:', err);
+  }
+}
+
+function startMotor() {
+  if (!soundEnabled || !audioCtx || motorActive) return;
+  if (!motorBuffersLoaded) {
+    loadMotorBuffers().then(() => {
+      if (!motorActive && soundEnabled && audioCtx) startMotor();
+    });
+    return;
+  }
+  motorActive = true;
+  const t0 = audioCtx.currentTime;
+  Object.keys(motorBuffers).forEach(key => {
+    const buf = motorBuffers[key];
+    if (!buf) return;
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    const gain = audioCtx.createGain();
+    gain.gain.setValueAtTime(0, t0);
+    src.connect(gain);
+    gain.connect(audioCtx.destination);
+    src.start(t0);
+    motorSources[key] = src;
+    motorGains[key] = gain;
+  });
+  updateMotorSound(0);
+}
+
+function stopMotor() {
+  if (!motorActive) return;
+  motorActive = false;
+  try {
+    const t = audioCtx.currentTime;
+    Object.keys(motorGains).forEach(key => {
+      const g = motorGains[key];
+      if (g) {
+        g.gain.cancelScheduledValues(t);
+        g.gain.setValueAtTime(g.gain.value, t);
+        g.gain.linearRampToValueAtTime(0, t + 0.3);
+      }
+    });
+    Object.keys(motorSources).forEach(key => {
+      const s = motorSources[key];
+      if (s) try { s.stop(t + 0.4); } catch (e) {}
+    });
+  } catch (e) {}
+  motorSources = { fan1: null, fan2: null, fan3: null };
+  motorGains = { fan1: null, fan2: null, fan3: null };
+}
+
+function updateMotorSound(intensity) {
+  if (!motorActive) return;
+  try {
+    const t = audioCtx.currentTime;
+    const i = Math.min(1, Math.max(0, intensity));
+    const master = motorVolumeMultiplier();
+
+    let w1 = 0, w2 = 0, w3 = 0;
+    const low = AUDIO_SETTINGS.motorSpeedLow;
+    const high = AUDIO_SETTINGS.motorSpeedHigh;
+
+    if (i <= low) {
+      w1 = 1 - (i / low) * 0.5;
+    } else if (i <= high) {
+      const k = (i - low) / (high - low);
+      w1 = 0.5 * (1 - k);
+      w2 = k;
+    } else {
+      const k = (i - high) / (1 - high);
+      w2 = 1 - k;
+      w3 = k;
+    }
+
+    const v1 = w1 * AUDIO_SETTINGS.motorLayer1Volume * master;
+    const v2 = w2 * AUDIO_SETTINGS.motorLayer2Volume * master;
+    const v3 = w3 * AUDIO_SETTINGS.motorLayer3Volume * master;
+
+    if (motorGains.fan1) motorGains.fan1.gain.linearRampToValueAtTime(v1, t + 0.15);
+    if (motorGains.fan2) motorGains.fan2.gain.linearRampToValueAtTime(v2, t + 0.15);
+    if (motorGains.fan3) motorGains.fan3.gain.linearRampToValueAtTime(v3, t + 0.15);
+  } catch (e) {}
+}
+
+// ================================================================
+//  🎚️ ПОЛЗУНКИ
+// ================================================================
+function setupVolumeSliders() {
+  const sliders = [
+    { id: 'volMusic',  labelId: 'valMusic',  key: 'music' },
+    { id: 'volMotor',  labelId: 'valMotor',  key: 'motor' },
+    { id: 'volHits',   labelId: 'valHits',   key: 'hits' },
+    { id: 'volFx',     labelId: 'valFx',     key: 'fx' },
+    { id: 'volMaster', labelId: 'valMaster', key: 'master' }
+  ];
+
+  sliders.forEach(s => {
+    const input = document.getElementById(s.id);
+    const label = document.getElementById(s.labelId);
+    if (!input || !label) return;
+
+    const initVal = Math.round(USER_VOL[s.key] * 100);
+    input.value = initVal;
+    label.textContent = initVal;
+
+    input.addEventListener('input', () => {
+      const val = parseInt(input.value);
+      label.textContent = val;
+      USER_VOL[s.key] = val / 100;
+      saveUserVolume();
+
+      // Живое применение музыки
+      if ((s.key === 'music' || s.key === 'master')) {
+        if (menuMusic && !menuMusic.paused) {
+          menuMusic.volume = AUDIO_SETTINGS.menuMusicVolume * musicVolumeMultiplier();
+        }
+        if (gameMusic && !gameMusic.paused) {
+          gameMusic.volume = AUDIO_SETTINGS.gameMusicVolume * musicVolumeMultiplier();
+        }
+      }
+      // Живое применение мотора
+      if ((s.key === 'motor' || s.key === 'master') && motorActive) {
+        const speed = Math.hypot(sub.vx, sub.vy);
+        const intensity = Math.min(1, speed / sub.maxThrust);
+        updateMotorSound(intensity);
+      }
+    });
+  });
+}
+
+// ================================================================
+//  ▶ КНОПКИ ПРОСЛУШИВАНИЯ
+// ================================================================
+function setupTestButtons() {
+  const testMotorBtn = document.getElementById('testMotorBtn');
+  const testHitBtn = document.getElementById('testHitBtn');
+  const testRingBtn = document.getElementById('testRingBtn');
+
+  if (testMotorBtn) {
+    testMotorBtn.addEventListener('click', async () => {
+      if (!soundEnabled) return;
+      unlockAudio();
+      if (!motorBuffersLoaded) {
+        testMotorBtn.textContent = '⏳ Загрузка...';
+        await loadMotorBuffers();
+        testMotorBtn.textContent = '▶ Мотор';
+      }
+      if (!motorBuffersLoaded) return;
+
+      testMotorBtn.classList.add('playing');
+      testMotorBtn.textContent = '🔊 Играет...';
+
+      const t0 = audioCtx.currentTime;
+      const duration = 2.0;
+      const master = motorVolumeMultiplier();
+
+      const keys = ['fan1', 'fan2', 'fan3'];
+      keys.forEach((key, idx) => {
+        if (!motorBuffers[key]) return;
+        const src = audioCtx.createBufferSource();
+        src.buffer = motorBuffers[key];
+        src.loop = true;
+        const gain = audioCtx.createGain();
+
+        const v1 = AUDIO_SETTINGS.motorLayer1Volume * master;
+        const v2 = AUDIO_SETTINGS.motorLayer2Volume * master;
+        const v3 = AUDIO_SETTINGS.motorLayer3Volume * master;
+
+        gain.gain.setValueAtTime(0, t0);
+        if (idx === 0) {
+          gain.gain.linearRampToValueAtTime(v1, t0 + 0.2);
+          gain.gain.linearRampToValueAtTime(0, t0 + duration - 0.3);
+        } else if (idx === 1) {
+          gain.gain.setValueAtTime(0, t0 + 0.5);
+          gain.gain.linearRampToValueAtTime(v2, t0 + 0.8);
+          gain.gain.linearRampToValueAtTime(0, t0 + duration - 0.3);
+        } else {
+          gain.gain.setValueAtTime(0, t0 + 1.0);
+          gain.gain.linearRampToValueAtTime(v3, t0 + 1.3);
+          gain.gain.linearRampToValueAtTime(0, t0 + duration - 0.3);
+        }
+
+        src.connect(gain);
+        gain.connect(audioCtx.destination);
+        src.start(t0);
+        src.stop(t0 + duration);
+      });
+
+      setTimeout(() => {
+        testMotorBtn.classList.remove('playing');
+        testMotorBtn.textContent = '▶ Мотор';
+      }, duration * 1000);
+    });
+  }
+
+  if (testHitBtn) {
+    testHitBtn.addEventListener('click', () => {
+      if (!soundEnabled) return;
+      unlockAudio();
+      soundWallHit();
+      testHitBtn.classList.add('playing');
+      setTimeout(() => testHitBtn.classList.remove('playing'), 500);
+    });
+  }
+
+  if (testRingBtn) {
+    testRingBtn.addEventListener('click', () => {
+      if (!soundEnabled) return;
+      unlockAudio();
+      soundRing();
+      testRingBtn.classList.add('playing');
+      setTimeout(() => testRingBtn.classList.remove('playing'), 500);
+    });
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    setupVolumeSliders();
+    setupTestButtons();
+  });
+} else {
+  setupVolumeSliders();
+  setupTestButtons();
+}
+
+updateMuteIcon();
