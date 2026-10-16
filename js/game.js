@@ -524,8 +524,8 @@ if (dist < pushRadius) {
   // Гасим скорость, если она направлена внутрь рыбы
   const vDot = sub.vx * ux + sub.vy * uy;
   if (vDot < 0) {
-    sub.vx -= vDot * ux * 1.8;   // полное гашение + отскок
-    sub.vy -= vDot * uy * 1.8;
+    sub.vx -= vDot * ux * 1.3;   // полное гашение + отскок
+    sub.vy -= vDot * uy * 1.3;
   }
 
   // Дополнительный импульс наружу
