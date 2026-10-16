@@ -47,7 +47,13 @@ function draw() {
   if (qualityLevel !== 'low') drawGrid(vL, vT, vR, vB);
 
   drawSeaFloor(vL, vR);
-
+// Водоросли
+if (qualityLevel !== 'low') {
+  for (const sw of seaweeds) {
+    if (sw.x < vL - 80 || sw.x > vR + 80) continue;
+    drawSeaweed(sw);
+  }
+}
   if (levelType === 'rings') {
     for (let i = 0; i < rings.length; i++) {
       const r = rings[i];
