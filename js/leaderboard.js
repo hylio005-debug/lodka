@@ -44,7 +44,6 @@ async function sendResult(level, accuracy) {
 // ================================================================
 async function loadPlayerProgress() {
   if (!currentPlayer) { playerProgress = 1; return; }
-  if (currentPlayer.source === 'nick') { playerProgress = 1; return; }
 
   try {
     const resp = await fetch(LEADERBOARD_RAW + '?t=' + Date.now());
@@ -57,7 +56,14 @@ async function loadPlayerProgress() {
       return;
     }
 
-    const key = `${currentPlayer.klass}|${currentPlayer.short}|${DEVICE_TYPE}`;
+    // Ключ для ника — klass = '—' (потому что введён вручную)
+    let key;
+    if (currentPlayer.source === 'nick') {
+      key = `—|${currentPlayer.short}|${DEVICE_TYPE}`;
+    } else {
+      key = `${currentPlayer.klass}|${currentPlayer.short}|${DEVICE_TYPE}`;
+    }
+
     const player = json.players.find(p => p.key === key);
 
     if (player) {
