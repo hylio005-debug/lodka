@@ -495,25 +495,42 @@ if (isAngler) {
   hitLure = (lureDx * lureDx + lureDy * lureDy) < (lureRR * lureRR);
 }
 
+// ================================================================
+//  УРОН + ЖЁСТКОЕ ВЫТАЛКИВАНИЕ
+//  Урон — по эллипсу, выталкивание — по кругу с запасом
+// ================================================================
+
+// --- Урон: эллипс (точно как визуал) ---
 if (hitBody || hitLure) {
   if (sub.invuln <= 0) {
     fishHits++;
     fishDamage += 12;
     applyDamage(12, 'fish');
   }
-  // Отталкивание от центра столкновения
-  let pushX, pushY;
-  if (hitBody) {
-    pushX = -bodyDx;
-    pushY = -bodyDy;
-  } else {
-    pushX = sub.x - (f.x + (f.dir >= 0 ? 1 : -1) * f.r * 0.9);
-    pushY = sub.y - (f.y - f.r * 2.0);
+}
+
+// --- Выталкивание: жёсткое, по большому кругу ---
+const pushRadius = Math.max(rx, ry) + sub.r * 1.5;   // запас 50%
+const dist = Math.hypot(bodyDx, bodyDy) || 1;
+
+if (dist < pushRadius) {
+  const ux = bodyDx / dist, uy = bodyDy / dist;
+  const overlap = pushRadius - dist;
+
+  // Мгновенно выталкиваем дрон наружу
+  sub.x += ux * overlap;
+  sub.y += uy * overlap;
+
+  // Гасим скорость, если она направлена внутрь рыбы
+  const vDot = sub.vx * ux + sub.vy * uy;
+  if (vDot < 0) {
+    sub.vx -= vDot * ux * 1.8;   // полное гашение + отскок
+    sub.vy -= vDot * uy * 1.8;
   }
-  const d = Math.hypot(pushX, pushY) || 1;
-  const ux = pushX / d, uy = pushY / d;
-  sub.x += ux * 2; sub.y += uy * 2;
-  sub.vx += ux * 30; sub.vy += uy * 30;
+
+  // Дополнительный импульс наружу
+  sub.vx += ux * 80;
+  sub.vy += uy * 80;
 }
   }
 
