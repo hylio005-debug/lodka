@@ -93,24 +93,25 @@ async function loadLeaderboard() {
       return;
     }
 
-    let html = `<table class="leaderboard"><thead><tr>
-      <th class="rank">#</th><th>Пилот</th><th>Ср.</th><th>Ур.</th>
-    </tr></thead><tbody>`;
+let html = `<table class="leaderboard"><thead><tr>
+  <th class="rank">#</th><th>Пилот</th><th>Средний %</th><th>Ур.</th>
+</tr></thead><tbody>`;
 
-    leaders.forEach((l, i) => {
-      const cls = i === 0 ? 'top1' : i === 1 ? 'top2' : i === 2 ? 'top3' : '';
-      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
-      const device = l.device === 'Mobile' ? '📱' : '💻';
-      const playerStr = l.klass && l.klass !== '—'
-        ? `${escapeHtml(l.klass)} — ${escapeHtml(l.nick)}`
-        : escapeHtml(l.nick);
-      html += `<tr class="${cls}">
-        <td class="rank">${medal || (i + 1)}</td>
-        <td>${playerStr} ${device}</td>
-        <td style="text-align:right;">${l.avg}%</td>
-        <td style="text-align:right;">${l.passedCount}</td>
-      </tr>`;
-    });
+leaders.forEach((l, i) => {
+  const cls = i === 0 ? 'top1' : i === 1 ? 'top2' : i === 2 ? 'top3' : '';
+  const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
+  const device = l.device === 'Mobile' ? '📱' : '💻';
+  const playerStr = l.klass && l.klass !== '—'
+    ? `${escapeHtml(l.klass)} — ${escapeHtml(l.nick)}`
+    : escapeHtml(l.nick);
+  const avg = l.avg !== undefined ? l.avg : 0;
+  html += `<tr class="${cls}">
+    <td class="rank">${medal || (i + 1)}</td>
+    <td>${playerStr} ${device}</td>
+    <td style="text-align:right;">${avg}%</td>
+    <td style="text-align:right;">${l.passedCount}/5</td>
+  </tr>`;
+});
 
     html += '</tbody></table>';
     container.innerHTML = html;
