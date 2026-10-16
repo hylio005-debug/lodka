@@ -4,7 +4,7 @@
 // ================================================================
 
 // ⚙️ URL Cloudflare Worker (из Шага 3)
-const LEADERBOARD_API = 'https://lodka-leaderboard-api.ВАШ-НИК.workers.dev';
+const LEADERBOARD_API = 'https://raspy-rice-519d.hylio005.workers.dev/';
 
 // ================================================================
 //  ОТПРАВКА РЕЗУЛЬТАТА
