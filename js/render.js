@@ -160,7 +160,34 @@ function drawSeaFloor(left, right) {
     }
   }
 }
+function drawSeaweed(sw) {
+  const t = sub.animTime;
+  const segments = 6;
+  const segH = sw.height / segments;
 
+  ctx.strokeStyle = sw.color;
+  ctx.lineWidth = sw.width;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(sw.x, sw.baseY);
+
+  let px = sw.x, py = sw.baseY;
+  for (let i = 1; i <= segments; i++) {
+    const bend = Math.sin(t * sw.speed + sw.phase + i * 0.6) * (i / segments) * 10;
+    const nx = sw.x + bend;
+    const ny = sw.baseY - segH * i;
+    ctx.lineTo(nx, ny);
+    px = nx;
+    py = ny;
+  }
+  ctx.stroke();
+
+  // Листик на верхушке
+  ctx.beginPath();
+  ctx.ellipse(px, py, sw.width * 0.9, sw.width * 1.5, 0, 0, Math.PI * 2);
+  ctx.fillStyle = sw.color;
+  ctx.fill();
+}
 function drawWall(w) {
   const dx = w.x2 - w.x1, dy = w.y2 - w.y1;
   const len = Math.hypot(dx, dy);
