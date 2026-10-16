@@ -510,7 +510,7 @@ if (hitBody || hitLure) {
 }
 
 // --- Выталкивание: жёсткое, по большому кругу ---
-const pushRadius = Math.max(rx, ry) + sub.r * 1.5;   // запас 50%
+const pushRadius = Math.max(rx, ry) + sub.r * 0.5;   // запас 50%
 const dist = Math.hypot(bodyDx, bodyDy) || 1;
 
 if (dist < pushRadius) {
