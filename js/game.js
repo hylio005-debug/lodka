@@ -111,6 +111,8 @@ thrustBtn.addEventListener('pointercancel', e => {
 });
 
 // ---------- Геометрия ----------
+const WALL_THICKNESS = 22;   // совпадает с визуалом в drawWall
+
 function circleVsSegment(cx, cy, r, x1, y1, x2, y2) {
   const dx = x2 - x1, dy = y2 - y1;
   const len2 = dx*dx + dy*dy || 1e-6;
@@ -119,9 +121,19 @@ function circleVsSegment(cx, cy, r, x1, y1, x2, y2) {
   const px = x1 + t * dx, py = y1 + t * dy;
   const ddx = cx - px, ddy = cy - py;
   const dist2 = ddx*ddx + ddy*ddy;
-  if (dist2 < r*r) {
+
+  // Учитываем половину толщины стены
+  const effectiveR = r + WALL_THICKNESS / 2;
+
+  if (dist2 < effectiveR * effectiveR) {
     const dist = Math.sqrt(dist2) || 1e-6;
-    return { hit: true, nx: ddx / dist, ny: ddy / dist, px, py, depth: r - dist };
+    return {
+      hit: true,
+      nx: ddx / dist,
+      ny: ddy / dist,
+      px, py,
+      depth: effectiveR - dist
+    };
   }
   return { hit: false };
 }
