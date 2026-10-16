@@ -450,14 +450,59 @@ function update(dt) {
 
     if (Math.abs(f.vx) > 5) f.dir = f.vx >= 0 ? 1 : -1;
 
-    const dx = f.x - sub.x, dy = f.y - sub.y, rr = f.r + sub.r;
-    if (dx*dx + dy*dy < rr*rr) {
-      if (sub.invuln <= 0) { fishHits++; fishDamage += 12; applyDamage(12, 'fish'); }
-      const d = Math.hypot(dx, dy) || 1;
-      const nx = -dx / d, ny = -dy / d;
-      sub.x += nx * 2; sub.y += ny * 2;
-      sub.vx += nx * 30; sub.vy += ny * 30;
-    }
+// ================================================================
+//  КОЛЛИЗИЯ С РЫБОЙ (эллипс) + ФОНАРИК УДИЛЬЩИКА (круг)
+// ================================================================
+
+// Размеры эллипса рыбы (совпадают с визуалом)
+const isAngler = f.type === 'angler';
+const rx = isAngler ? f.r * 1.5 : f.r * 1.4;   // полуось X
+const ry = isAngler ? f.r * 1.0 : f.r * 0.9;   // полуось Y
+
+// Нормализованное расстояние до центра эллипса
+const bodyDx = sub.x - f.x;
+const bodyDy = sub.y - f.y;
+const bodyNx = bodyDx / (rx + sub.r);
+const bodyNy = bodyDy / (ry + sub.r);
+const bodyDist = bodyNx * bodyNx + bodyNy * bodyNy;
+
+let hitBody = bodyDist < 1;
+
+// Дополнительный хитбокс для фонарика-приманки удильщика
+let hitLure = false;
+if (isAngler) {
+  // Фонарик вынесен вперёд: центр в (f.r*0.9, -f.r*2.0) относительно рыбы,
+  // но с учётом направления dir
+  const dir = f.dir >= 0 ? 1 : -1;
+  const lureX = f.x + dir * f.r * 0.9;
+  const lureY = f.y - f.r * 2.0;
+  const lureR = f.r * 0.3;   // радиус светящегося шарика
+  const lureDx = sub.x - lureX;
+  const lureDy = sub.y - lureY;
+  const lureRR = lureR + sub.r;
+  hitLure = (lureDx * lureDx + lureDy * lureDy) < (lureRR * lureRR);
+}
+
+if (hitBody || hitLure) {
+  if (sub.invuln <= 0) {
+    fishHits++;
+    fishDamage += 12;
+    applyDamage(12, 'fish');
+  }
+  // Отталкивание от центра столкновения
+  let pushX, pushY;
+  if (hitBody) {
+    pushX = -bodyDx;
+    pushY = -bodyDy;
+  } else {
+    pushX = sub.x - (f.x + (f.dir >= 0 ? 1 : -1) * f.r * 0.9);
+    pushY = sub.y - (f.y - f.r * 2.0);
+  }
+  const d = Math.hypot(pushX, pushY) || 1;
+  const ux = pushX / d, uy = pushY / d;
+  sub.x += ux * 2; sub.y += uy * 2;
+  sub.vx += ux * 30; sub.vy += uy * 30;
+}
   }
 
   updateAmbientBubbles(dt);
