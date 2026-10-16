@@ -97,6 +97,7 @@ let fishes = [];
 let rings = [];
 let ambientBubbles = [];
 let seaFloorHills = [];
+let seaweeds = [];
 
 let finish = { x: 3080, y: 120, r: 30 };
 let ringsRequired = 0;
