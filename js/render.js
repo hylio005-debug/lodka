@@ -667,3 +667,73 @@ function drawAnglerFish(f) {
 
   ctx.restore();
 }
+// ================================================================
+//  ПРОЦЕДУРНЫЕ ЭЛЕМЕНТЫ ДЛЯ СТЕН МАЙЯ
+// ================================================================
+
+// Детерминированный шум по координате
+function hashNoise(x, y, seed) {
+  const n = Math.sin(x * 12.9898 + y * 78.233 + (seed || 0) * 43.1) * 43758.5453;
+  return n - Math.floor(n);
+}
+
+// Иероглиф майя
+function drawMayanGlyphToCtx(c, x, y, size, seed) {
+  const r1 = hashNoise(x, y, seed);
+  const r2 = hashNoise(x + 100, y + 50, seed);
+  const r3 = hashNoise(x + 200, y + 100, seed);
+
+  c.strokeStyle = 'rgba(60, 30, 15, 0.55)';
+  c.fillStyle = 'rgba(60, 30, 15, 0.45)';
+  c.lineWidth = 1.2;
+
+  // Рамка
+  c.strokeRect(x - size * 0.35, y - size * 0.35, size * 0.7, size * 0.7);
+
+  // Узор внутри (4 варианта)
+  const pattern = Math.floor(r1 * 4);
+
+  if (pattern === 0) {
+    // Точка + линия
+    c.beginPath();
+    c.arc(x, y, size * 0.08, 0, Math.PI * 2);
+    c.fill();
+    c.beginPath();
+    c.moveTo(x - size * 0.25, y + size * 0.15);
+    c.lineTo(x + size * 0.25, y + size * 0.15);
+    c.stroke();
+  } else if (pattern === 1) {
+    // Крест
+    c.beginPath();
+    c.moveTo(x - size * 0.25, y);
+    c.lineTo(x + size * 0.25, y);
+    c.moveTo(x, y - size * 0.25);
+    c.lineTo(x, y + size * 0.25);
+    c.stroke();
+  } else if (pattern === 2) {
+    // Спираль
+    c.beginPath();
+    c.arc(x, y, size * 0.2, 0, Math.PI * 1.4);
+    c.stroke();
+    c.beginPath();
+    c.arc(x + size * 0.05, y + size * 0.05, size * 0.08, 0, Math.PI * 2);
+    c.stroke();
+  } else {
+    // Три полосы
+    c.beginPath();
+    c.moveTo(x - size * 0.18, y - size * 0.2);
+    c.lineTo(x - size * 0.18, y + size * 0.2);
+    c.moveTo(x, y - size * 0.2);
+    c.lineTo(x, y + size * 0.2);
+    c.moveTo(x + size * 0.18, y - size * 0.2);
+    c.lineTo(x + size * 0.18, y + size * 0.2);
+    c.stroke();
+  }
+
+  // Дополнительная точка
+  if (r2 > 0.6) {
+    c.beginPath();
+    c.arc(x + (r3 - 0.5) * size * 0.3, y + (r2 - 0.5) * size * 0.3, size * 0.05, 0, Math.PI * 2);
+    c.fill();
+  }
+}
