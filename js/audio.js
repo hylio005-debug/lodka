@@ -1,6 +1,6 @@
 // ================================================================
 //  js/audio.js — МУЗЫКА + ЗВУКИ (Web Audio API)
-//  Версия 3.2 — тише мотор, громче столкновения
+//  Версия 3.3 — тихий мотор, громкие удары
 // ================================================================
 
 const menuMusic = document.getElementById('menuMusic');
@@ -97,14 +97,12 @@ function playTone(freq, duration, type, volume, startDelay) {
 }
 
 // ================================================================
-//  УДАР О СТЕНУ — ГРОМЧЕ
-//  Мягкий подводный «бум» + дополнительный низ
+//  УДАР О СТЕНУ — громкий мягкий «бум»
 // ================================================================
 function soundWallHit() {
   if (!soundEnabled || !audioCtx) return;
   const t0 = audioCtx.currentTime;
 
-  // Основной тон — низкий «бум»
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
   const filter = audioCtx.createBiquadFilter();
@@ -117,7 +115,6 @@ function soundWallHit() {
   filter.frequency.setValueAtTime(220, t0);
   filter.Q.value = 1;
 
-  // ГРОМЧЕ: 0.28 вместо 0.18
   gain.gain.setValueAtTime(0, t0);
   gain.gain.linearRampToValueAtTime(0.28, t0 + 0.02);
   gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.35);
@@ -128,14 +125,13 @@ function soundWallHit() {
   osc.start(t0);
   osc.stop(t0 + 0.4);
 
-  // Второй тон — «тело» удара, тоже громче
   const osc2 = audioCtx.createOscillator();
   const gain2 = audioCtx.createGain();
   osc2.type = 'sine';
   osc2.frequency.setValueAtTime(150, t0);
   osc2.frequency.exponentialRampToValueAtTime(70, t0 + 0.15);
   gain2.gain.setValueAtTime(0, t0);
-  gain2.gain.linearRampToValueAtTime(0.14, t0 + 0.01);   // было 0.08
+  gain2.gain.linearRampToValueAtTime(0.14, t0 + 0.01);
   gain2.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.2);
   osc2.connect(gain2);
   gain2.connect(audioCtx.destination);
@@ -144,7 +140,7 @@ function soundWallHit() {
 }
 
 // ================================================================
-//  УДАР О РЫБУ — тоже громче
+//  УДАР О РЫБУ — резкий
 // ================================================================
 function soundFishHit() {
   if (!soundEnabled || !audioCtx) return;
@@ -162,7 +158,7 @@ function soundFishHit() {
   filter.frequency.setValueAtTime(900, t0);
 
   gain.gain.setValueAtTime(0, t0);
-  gain.gain.linearRampToValueAtTime(0.22, t0 + 0.01);   // громче
+  gain.gain.linearRampToValueAtTime(0.22, t0 + 0.01);
   gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.28);
 
   osc.connect(filter);
@@ -171,7 +167,6 @@ function soundFishHit() {
   osc.start(t0);
   osc.stop(t0 + 0.35);
 
-  // Второй тон — тревожная нотка
   const osc2 = audioCtx.createOscillator();
   const gain2 = audioCtx.createGain();
   osc2.type = 'sine';
@@ -226,21 +221,7 @@ function soundDeath() {
 }
 
 // ================================================================
-//  МОТОР — ТИШЕ
-//  Мягкий подводный гул, почти не слышный фон
-// ================================================================
-let motorOsc1 = null;
-let motorOsc2 = null;
-let motorOsc3 = null;
-let motorFilter = null;
-let motorGain = null;
-let motorLfo = null;
-let motorLfoGain = null;
-let motorActive = false;
-
-// ================================================================
-//  МОТОР — ОЧЕНЬ ТИХИЙ ФОН
-//  Версия 3.3 — убран верхний тон, снижена громкость в 2.5 раза
+//  МОТОР — очень тихий подводный гул
 // ================================================================
 let motorOsc1 = null;
 let motorOsc2 = null;
@@ -255,17 +236,15 @@ function startMotor() {
   motorActive = true;
   const t0 = audioCtx.currentTime;
 
-  // Только ДВА низких тона — без верхнего, который дребезжит
   motorOsc1 = audioCtx.createOscillator();
   motorOsc2 = audioCtx.createOscillator();
 
   motorOsc1.type = 'sine';
-  motorOsc1.frequency.setValueAtTime(35, t0);   // очень низкий
+  motorOsc1.frequency.setValueAtTime(35, t0);
 
   motorOsc2.type = 'sine';
-  motorOsc2.frequency.setValueAtTime(52, t0);   // чуть выше, квинта
+  motorOsc2.frequency.setValueAtTime(52, t0);
 
-  // Фильтр режет всё выше 120 Гц — оставляем только глухой низ
   motorFilter = audioCtx.createBiquadFilter();
   motorFilter.type = 'lowpass';
   motorFilter.frequency.setValueAtTime(120, t0);
@@ -273,15 +252,13 @@ function startMotor() {
 
   motorGain = audioCtx.createGain();
   motorGain.gain.setValueAtTime(0, t0);
-  // ГРОМКОСТЬ: 0.008 — очень тихо (было 0.02)
   motorGain.gain.linearRampToValueAtTime(0.008, t0 + 0.6);
 
-  // Очень мягкое «дыхание»
   motorLfo = audioCtx.createOscillator();
   motorLfo.type = 'sine';
   motorLfo.frequency.setValueAtTime(0.4, t0);
   motorLfoGain = audioCtx.createGain();
-  motorLfoGain.gain.setValueAtTime(0.002, t0);   // меньше амплитуда
+  motorLfoGain.gain.setValueAtTime(0.002, t0);
 
   motorLfo.connect(motorLfoGain);
   motorLfoGain.connect(motorGain.gain);
@@ -322,16 +299,13 @@ function updateMotorSound(intensity) {
     const t = audioCtx.currentTime;
     const i = Math.min(1, Math.max(0, intensity));
 
-    // ГРОМКОСТЬ: 0.005 + i * 0.008 (максимум 0.013, было до 0.06)
     const vol = 0.005 + i * 0.008;
     motorGain.gain.cancelScheduledValues(t);
     motorGain.gain.linearRampToValueAtTime(vol, t + 0.2);
 
-    // Частота немного растёт при разгоне — но не сильно
     if (motorOsc1) motorOsc1.frequency.setValueAtTime(35 + i * 5, t);
     if (motorOsc2) motorOsc2.frequency.setValueAtTime(52 + i * 8, t);
 
-    // Фильтр почти не открывается — держим глухой звук
     motorFilter.frequency.setValueAtTime(120 + i * 40, t);
   } catch (e) {}
 }
