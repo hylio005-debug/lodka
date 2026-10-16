@@ -524,28 +524,7 @@ function updateHud() {
 }
 
 // ---------- Отправка ----------
-async function sendResult(level, accuracy) {
-  if (!currentPlayer) return { ok: false, error: 'Нет игрока' };
-  const payload = {
-    klass: currentPlayer.klass,
-    student: currentPlayer.short,
-    level: level,
-    accuracy: accuracy,
-    device: DEVICE_TYPE
-  };
-  try {
-    await fetch(SERVER_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(payload)
-    });
-    return { ok: true };
-  } catch (err) {
-    console.error(err);
-    return { ok: false, error: err.message };
-  }
-}
+
 
 // ---------- Статистика ----------
 async function showStats(title) {
@@ -621,42 +600,7 @@ async function showStats(title) {
 }
 
 // ---------- Лидерборд ----------
-async function loadLeaderboard() {
-  const container = el('leaderboard-container');
-  container.innerHTML = '<div class="empty-msg">Загрузка...</div>';
-  try {
-    const resp = await fetch(SERVER_URL + '?action=leaderboard&t=' + Date.now());
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const json = await resp.json();
-    if (!json.success) throw new Error(json.error || 'Ошибка');
-    if (!json.leaders || json.leaders.length === 0) {
-      container.innerHTML = '<div class="empty-msg">Пока нет результатов.</div>';
-      return;
-    }
-    let html = `<table class="leaderboard"><thead><tr>
-      <th class="rank">#</th><th>Пилот</th><th>Ср.</th><th>Ур.</th>
-    </tr></thead><tbody>`;
-    json.leaders.forEach((l, i) => {
-      const cls = i === 0 ? 'top1' : i === 1 ? 'top2' : i === 2 ? 'top3' : '';
-      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
-      const device = l.device === 'Mobile' ? '📱' : '💻';
-      const playerStr = l.klass && l.klass !== '—'
-        ? `${escapeHtml(l.klass)} — ${escapeHtml(l.student)}`
-        : escapeHtml(l.student);
-      html += `<tr class="${cls}">
-        <td class="rank">${medal || (i + 1)}</td>
-        <td>${playerStr} ${device}</td>
-        <td style="text-align:right;">${l.avg}%</td>
-        <td style="text-align:right;">${l.passedCount}</td>
-      </tr>`;
-    });
-    html += '</tbody></table>';
-    container.innerHTML = html;
-  } catch (err) {
-    console.error(err);
-    container.innerHTML = '<div class="empty-msg">⚠️ Не удалось загрузить таблицу</div>';
-  }
-}
+
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, ch => ({
