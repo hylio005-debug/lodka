@@ -1,44 +1,38 @@
 // ================================================================
 //  js/audio.js — МУЗЫКА + ЗВУКИ (Web Audio API)
-//  Версия 4.0 — все громкости в блоке AUDIO_SETTINGS
+//  Версия 4.1 — мотор = подводный шелест (шум винта)
 // ================================================================
 
 // ================================================================
 //  ⚙️ НАСТРОЙКИ ЗВУКА — МЕНЯЙ ЗДЕСЬ
-//  Значения от 0.0 (тишина) до 1.0 (максимум).
-//  Меняй, сохраняй файл, обновляй игру (Ctrl+F5) — слышишь разницу.
+//  Значения от 0.0 (тишина) до 1.0 (максимум)
 // ================================================================
 const AUDIO_SETTINGS = {
-  // ---------- ГРОМКОСТЬ ОТДЕЛЬНЫХ ЗВУКОВ ----------
-  // Удар о стену
-  wallHitVolume:      0.50,   // основной «бум». Рекомендую 0.3–0.7
-  wallHitVolume2:     0.25,   // «тело» удара. ~50% от основного
+  // ---------- УДАРЫ ----------
+  wallHitVolume:      0.50,   // удар о стену — основной «бум»
+  wallHitVolume2:     0.25,   // «тело» удара
+  fishHitVolume:      0.40,   // удар о рыбу
+  fishHitVolume2:     0.22,   // тревожная нотка
 
-  // Удар о рыбу
-  fishHitVolume:      0.80,   // основной тон
-  fishHitVolume2:     0.50,   // тревожная нотка
-
-  // Кольцо пройдено
-  ringVolume:         0.20,   // «динь»
-  ringVolume2:        0.12,   // второй тон
-
-  // Финиш
-  finishVolume:       0.20,   // каждая нота аккорда
-
-  // Смерть
+  // ---------- КОЛЬЦО / ФИНИШ / СМЕРТЬ ----------
+  ringVolume:         0.20,
+  ringVolume2:        0.12,
+  finishVolume:       0.20,
   deathVolume:        0.20,
 
-  // ---------- МОТОР ----------
-  motorVolume:        0.001,  // базовая громкость гула. Рекомендую 0.002–0.010
-  motorVolumeDynamic: 0.001,  // добавка при разгоне (умножается на скорость)
-  motorLfoAmount:     0.0001,  // амплитуда «дыхания». Рекомендую 0.0005–0.003
+  // ---------- МОТОР (ШЕЛЕСТ) ----------
+  motorVolume:        0.015,  // базовая громкость шелеста. Рекомендую 0.008–0.025
+  motorVolumeDynamic: 0.025,  // добавка при разгоне (умножается на скорость)
+  motorLfoAmount:     0.004,  // амплитуда «дыхания» шелеста
+  motorFilterFreq:    800,    // частота фильтра: чем ВЫШЕ — тем ШИПЯЩЕЕ, чем НИЖЕ — тем ГЛУШЕ
+                              // 400 — очень глухой, 800 — мягкий шелест, 1500 — шипение воды
 
   // ---------- МУЗЫКА (mp3) ----------
-  menuMusicVolume:    0.5,    // громкость меню
-  gameMusicVolume:    0.45,   // громкость уровня
+  menuMusicVolume:    0.5,
+  gameMusicVolume:    0.45,
 
   // ---------- ОБЩИЙ ----------
-  masterVolume:       1.0     // множитель для всего (0.0 – 1.0). 0.5 = в 2 раза тише всё
+  masterVolume:       1.0
 };
 
 // ================================================================
@@ -120,7 +114,6 @@ function unlockAudio() {
   }
 }
 
-// Универсальный тон — громкость умножается на masterVolume
 function playTone(freq, duration, type, volume, startDelay) {
   if (!soundEnabled || !audioCtx) return;
   const t0 = audioCtx.currentTime + (startDelay || 0);
@@ -227,7 +220,7 @@ function soundFishHit() {
 }
 
 // ================================================================
-//  КОЛЬЦО
+//  КОЛЬЦО / ФИНИШ / СМЕРТЬ
 // ================================================================
 function soundRing() {
   if (!soundEnabled || !audioCtx) return;
@@ -235,9 +228,6 @@ function soundRing() {
   playTone(1320, 0.38, 'sine', AUDIO_SETTINGS.ringVolume2, 0.08);
 }
 
-// ================================================================
-//  ФИНИШ
-// ================================================================
 function soundFinish() {
   if (!soundEnabled || !audioCtx) return;
   const v = AUDIO_SETTINGS.finishVolume;
@@ -247,9 +237,6 @@ function soundFinish() {
   playTone(1046, 0.7, 'sine', v * 0.75, 0.3);
 }
 
-// ================================================================
-//  СМЕРТЬ
-// ================================================================
 function soundDeath() {
   if (!soundEnabled || !audioCtx) return;
   const t0 = audioCtx.currentTime;
@@ -268,56 +255,67 @@ function soundDeath() {
 }
 
 // ================================================================
-//  МОТОР
+//  МОТОР — ПОДВОДНЫЙ ШЕЛЕСТ
+//  Шумовой буфер → фильтр → «шшшш», как винт в воде
 // ================================================================
-let motorOsc1 = null;
-let motorOsc2 = null;
+let motorNoiseSource = null;
+let motorNoiseBuffer = null;
 let motorFilter = null;
 let motorGain = null;
 let motorLfo = null;
 let motorLfoGain = null;
 let motorActive = false;
 
+// Генерирует буфер белого шума (2 секунды) — источник шелеста
+function createNoiseBuffer() {
+  if (motorNoiseBuffer) return motorNoiseBuffer;
+  const bufferSize = audioCtx.sampleRate * 2;
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    data[i] = Math.random() * 2 - 1;
+  }
+  motorNoiseBuffer = buffer;
+  return buffer;
+}
+
 function startMotor() {
   if (!soundEnabled || !audioCtx || motorActive) return;
   motorActive = true;
   const t0 = audioCtx.currentTime;
 
-  motorOsc1 = audioCtx.createOscillator();
-  motorOsc2 = audioCtx.createOscillator();
+  // Источник — зацикленный белый шум
+  motorNoiseSource = audioCtx.createBufferSource();
+  motorNoiseSource.buffer = createNoiseBuffer();
+  motorNoiseSource.loop = true;
 
-  motorOsc1.type = 'sine';
-  motorOsc1.frequency.setValueAtTime(35, t0);
-
-  motorOsc2.type = 'sine';
-  motorOsc2.frequency.setValueAtTime(52, t0);
-
+  // Фильтр — превращает белый шум в мягкий шелест
   motorFilter = audioCtx.createBiquadFilter();
   motorFilter.type = 'lowpass';
-  motorFilter.frequency.setValueAtTime(120, t0);
-  motorFilter.Q.value = 0.5;
+  motorFilter.frequency.setValueAtTime(AUDIO_SETTINGS.motorFilterFreq, t0);
+  motorFilter.Q.value = 0.7;
 
+  // Громкость
   motorGain = audioCtx.createGain();
   motorGain.gain.setValueAtTime(0, t0);
   const baseVol = AUDIO_SETTINGS.motorVolume * AUDIO_SETTINGS.masterVolume;
-  motorGain.gain.linearRampToValueAtTime(baseVol, t0 + 0.6);
+  motorGain.gain.linearRampToValueAtTime(baseVol, t0 + 0.5);
 
+  // LFO — «дыхание» шелеста (волны громкости)
   motorLfo = audioCtx.createOscillator();
   motorLfo.type = 'sine';
-  motorLfo.frequency.setValueAtTime(0.4, t0);
+  motorLfo.frequency.setValueAtTime(0.7, t0);
   motorLfoGain = audioCtx.createGain();
   motorLfoGain.gain.setValueAtTime(AUDIO_SETTINGS.motorLfoAmount * AUDIO_SETTINGS.masterVolume, t0);
 
   motorLfo.connect(motorLfoGain);
   motorLfoGain.connect(motorGain.gain);
 
-  motorOsc1.connect(motorFilter);
-  motorOsc2.connect(motorFilter);
+  motorNoiseSource.connect(motorFilter);
   motorFilter.connect(motorGain);
   motorGain.connect(audioCtx.destination);
 
-  motorOsc1.start(t0);
-  motorOsc2.start(t0);
+  motorNoiseSource.start(t0);
   motorLfo.start(t0);
 }
 
@@ -329,12 +327,10 @@ function stopMotor() {
     motorGain.gain.cancelScheduledValues(t);
     motorGain.gain.setValueAtTime(motorGain.gain.value, t);
     motorGain.gain.linearRampToValueAtTime(0, t + 0.3);
-    motorOsc1.stop(t + 0.4);
-    motorOsc2.stop(t + 0.4);
+    motorNoiseSource.stop(t + 0.4);
     motorLfo.stop(t + 0.4);
   } catch (e) {}
-  motorOsc1 = null;
-  motorOsc2 = null;
+  motorNoiseSource = null;
   motorLfo = null;
   motorLfoGain = null;
   motorFilter = null;
@@ -352,10 +348,9 @@ function updateMotorSound(intensity) {
     motorGain.gain.cancelScheduledValues(t);
     motorGain.gain.linearRampToValueAtTime(vol, t + 0.2);
 
-    if (motorOsc1) motorOsc1.frequency.setValueAtTime(35 + i * 5, t);
-    if (motorOsc2) motorOsc2.frequency.setValueAtTime(52 + i * 8, t);
-
-    motorFilter.frequency.setValueAtTime(120 + i * 40, t);
+    // При разгоне шелест становится чуть «шипящее» — фильтр открывается
+    const freq = AUDIO_SETTINGS.motorFilterFreq + i * 400;
+    motorFilter.frequency.setValueAtTime(freq, t);
   } catch (e) {}
 }
 
