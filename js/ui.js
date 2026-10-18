@@ -12,24 +12,38 @@ const screens = {
   controls:    el('screen-controls'),
   options:     el('screen-options'),
   stats:       el('screen-stats'),
-  leaderboard: el('screen-leaderboard')
+  leaderboard: el('screen-leaderboard'),
+  artifact:    el('screen-artifact'),
+  fail:        el('screen-fail'),
 };
 
 const hudEls = [
   el('hud'), el('hpbar'), el('hptext'), el('hint'),
-  el('playerBadge'), el('gameControls'),
-  el('mobileControls'), el('thrustButton')
+  el('playerBadge'), el('gameControls'), el('startHint'),
+  el('mobileControls'), el('thrustButton'), el('mobileArtifacts'),
+  el('cooldownPanel')
 ];
 
 function showScreen(name) {
-  for (const k in screens) screens[k].classList.toggle('show', k === name);
+  for (const k in screens) {
+    if (screens[k]) screens[k].classList.toggle('show', k === name);
+  }
   const playing = (name === null);
-  hudEls.forEach(e => e && e.classList.toggle('hidden', !playing));
+  hudEls.forEach(e => {
+    if (e) {
+      if (e.id === 'startHint') {
+        // startHint управляется отдельно в game.js
+      } else {
+        e.classList.toggle('hidden', !playing);
+      }
+    }
+  });
   const cv = el('game');
   if (cv) cv.classList.toggle('hidden', !playing);
 
   if (name === 'map') {
     if (typeof drawMapCanvas === 'function') drawMapCanvas();
+    updateMapInfo();
   }
 
   if (typeof musicEnabled !== 'undefined' && musicEnabled) {
@@ -78,27 +92,6 @@ function toggleFullscreen() {
   }
 }
 
-async function tryLockLandscape() {
-  if (!isTouch) return;
-  try {
-    if (screen.orientation && screen.orientation.lock) {
-      await screen.orientation.lock('landscape').catch(() => {});
-    }
-  } catch (e) {}
-}
-
-function checkOrientation() {
-  const warning = el('portraitWarning');
-  if (!warning) return;
-  if (!isTouch) {
-    warning.classList.remove('show');
-    return;
-  }
-  const isPortrait = window.innerHeight > window.innerWidth;
-  if (isPortrait && started) warning.classList.add('show');
-  else warning.classList.remove('show');
-}
-
 function openInWindow() {
   try {
     const htmlContent = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
@@ -141,9 +134,40 @@ function togglePause() {
     if (menuMusic) menuMusic.pause();
     if (gameMusic) gameMusic.pause();
     stopMotor();
+    updateArtifactUI(); // Обновляем кнопки артефактов
   } else if (musicEnabled) {
     switchMusic('game');
   }
+}
+
+// ---------- Обновление панели артефактов в паузе ----------
+function updateArtifactUI() {
+  const btns = {
+    map: el('artMapBtn'),
+    winch: el('artWinchBtn'),
+    flashlight: el('artFlashBtn'),
+    torpedo: el('artTorpedoBtn')
+  };
+  
+  for (const key in btns) {
+    const btn = btns[key];
+    if (!btn) continue;
+    if (inventory[key]) {
+      btn.classList.remove('off');
+      btn.classList.add('active');
+    } else {
+      btn.classList.add('off');
+      btn.classList.remove('active');
+    }
+  }
+
+  // Мобильные кнопки
+  const mobW = el('mobWinchBtn');
+  const mobF = el('mobFlashBtn');
+  const mobT = el('mobTorpedoBtn');
+  if (mobW) mobW.style.display = inventory.winch ? 'flex' : 'none';
+  if (mobF) mobF.style.display = inventory.flashlight ? 'flex' : 'none';
+  if (mobT) mobT.style.display = inventory.torpedo ? 'flex' : 'none';
 }
 
 // ---------- Глобальные клавиши ----------
@@ -152,11 +176,25 @@ window.addEventListener('keydown', e => {
       && !e.ctrlKey && !e.metaKey && !e.altKey) {
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
-    toggleFullscreen();
+    // F уже обрабатывается в game.js для прожектора, но оставим фолбэк для фуллскрина
+    if (!inventory.flashlight) toggleFullscreen();
   }
-  if (e.key === 'Escape' && started) togglePause();
 });
-
+// ---------- Ориентация для мобилок ----------
+function checkOrientation() {
+  const warning = el('portraitWarning');
+  if (!warning) return;
+  if (!isTouch) {
+    warning.classList.remove('show');
+    return;
+  }
+  const isPortrait = window.innerHeight > window.innerWidth;
+  if (isPortrait && started) {
+    warning.classList.add('show');
+  } else {
+    warning.classList.remove('show');
+  }
+}
 window.addEventListener('resize', checkOrientation);
 window.addEventListener('orientationchange', () => setTimeout(checkOrientation, 200));
 

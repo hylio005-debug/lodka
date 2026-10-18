@@ -1,16 +1,36 @@
 // ================================================================
 //  js/game.js — ЛОГИКА, ЦИКЛ, СТАТИСТИКА, ОТПРАВКА
+//  Игра «Погружение» v3.3 (Артефакты)
 // ================================================================
 
 // ---------- Ввод: мышь ----------
-const mouse = { x: 0, y: 0, down: false };
+const mouse = { x: 0, y: 0, down: false, rightDown: false };
 
 canvas.addEventListener('mousedown', e => {
-  if (e.button === 0) { mouse.down = true; e.preventDefault(); }
+  if (e.button === 0) { // ЛКМ
+    mouse.down = true; 
+    e.preventDefault(); 
+  }
+  if (e.button === 2) { // ПКМ (Лебедка)
+    mouse.rightDown = true;
+    if (started && !paused && inventory.winch && winchCooldown <= 0 && winchState === 'idle') {
+      fireWinch();
+    }
+    e.preventDefault();
+  }
+  if (e.button === 1) { // СКМ (Прожектор)
+    if (started && !paused && inventory.flashlight) {
+      toggleFlashlight();
+    }
+    e.preventDefault();
+  }
 });
+
 window.addEventListener('mouseup', e => {
   if (e.button === 0) mouse.down = false;
+  if (e.button === 2) mouse.rightDown = false;
 });
+
 canvas.addEventListener('mousemove', e => {
   const rect = canvas.getBoundingClientRect();
   const sx = (e.clientX - rect.left) * (canvas.width / rect.width);
@@ -20,7 +40,23 @@ canvas.addEventListener('mousemove', e => {
 });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 
-// ---------- Стик ----------
+// ---------- Ввод: клавиатура ----------
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space') {
+    if (started && !paused && inventory.torpedo && torpedoCooldown <= 0) {
+      fireTorpedo();
+    }
+    e.preventDefault();
+  }
+  if (e.code === 'Escape' && started) {
+    togglePause();
+  }
+  if ((e.code === 'KeyF' || e.code === 'KeyА') && started && !paused && inventory.flashlight) {
+    toggleFlashlight();
+  }
+});
+
+// ---------- Стик (Мобилка) ----------
 const joystickBase = el('joystickBase');
 const joystickKnob = el('joystickKnob');
 const mobileControls = el('mobileControls');
@@ -79,7 +115,7 @@ joystickBase.addEventListener('pointercancel', e => {
   stickEnd();
 });
 
-// ---------- Мотор ----------
+// ---------- Мотор (Мобилка) ----------
 const thrustBtn = el('thrustBtn');
 const thrust = { pressed: false, pointerId: null };
 
@@ -88,6 +124,7 @@ function thrustDown(pointerId) {
   thrust.pointerId = pointerId;
   thrustBtn.classList.add('active');
   thrustButton.classList.add('active');
+  if (isWaiting) startActualRun();
 }
 function thrustUp() {
   thrust.pressed = false;
@@ -110,40 +147,63 @@ thrustBtn.addEventListener('pointercancel', e => {
   thrustUp();
 });
 
+// ---------- Кнопки артефактов на мобилке ----------
+const mobWinchBtn = el('mobWinchBtn');
+const mobFlashBtn = el('mobFlashBtn');
+const mobTorpedoBtn = el('mobTorpedoBtn');
+
+if (mobWinchBtn) {
+  mobWinchBtn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    if (inventory.winch && winchCooldown <= 0 && winchState === 'idle') fireWinch();
+  });
+}
+if (mobFlashBtn) {
+  mobFlashBtn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    if (inventory.flashlight) toggleFlashlight();
+  });
+}
+if (mobTorpedoBtn) {
+  mobTorpedoBtn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    if (inventory.torpedo && torpedoCooldown <= 0) fireTorpedo();
+  });
+}
+
 // ---------- Геометрия ----------
-const WALL_THICKNESS = 22;   // совпадает с визуалом в drawWall
+const WALL_THICKNESS = 22; 
 
 function circleVsSegment(cx, cy, r, x1, y1, x2, y2) {
+  const halfT = WALL_THICKNESS / 2;
   const dx = x2 - x1, dy = y2 - y1;
-  const len2 = dx*dx + dy*dy || 1e-6;
-  let t = ((cx - x1) * dx + (cy - y1) * dy) / len2;
-  t = Math.max(0, Math.min(1, t));
-  const px = x1 + t * dx, py = y1 + t * dy;
-  const ddx = cx - px, ddy = cy - py;
-  const dist2 = ddx*ddx + ddy*ddy;
-
-  // Учитываем половину толщины стены
-  const effectiveR = r + WALL_THICKNESS / 2;
-
-  if (dist2 < effectiveR * effectiveR) {
+  const len = Math.hypot(dx, dy) || 1e-6;
+  const ux = dx / len, uy = dy / len;
+  const vx = cx - x1, vy = cy - y1;
+  let t = vx * ux + vy * uy;
+  let s = vx * (-uy) + vy * ux;
+  if (t < 0) t = 0;
+  if (t > len) t = len;
+  if (s < -halfT) s = -halfT;
+  if (s > halfT) s = halfT;
+  const closestX = x1 + ux * t - uy * s;
+  const closestY = y1 + uy * t + ux * s;
+  const ddx = cx - closestX, ddy = cy - closestY;
+  const dist2 = ddx * ddx + ddy * ddy;
+  if (dist2 < r * r) {
     const dist = Math.sqrt(dist2) || 1e-6;
-    return {
-      hit: true,
-      nx: ddx / dist,
-      ny: ddy / dist,
-      px, py,
-      depth: effectiveR - dist
-    };
+    return { hit: true, nx: ddx / dist, ny: ddy / dist, px: closestX, py: closestY, depth: r - dist };
   }
   return { hit: false };
 }
+
 function normAngle(a) {
   while (a > Math.PI) a -= Math.PI * 2;
   while (a < -Math.PI) a += Math.PI * 2;
   return a;
 }
 
-// ---------- Обновление мира из уровня ----------
+// ---------- Обновление мира ----------
 function updateWorldFromLevel(data) {
   WORLD_W = data.worldW || 3200;
   WORLD_H = data.worldH || 1100;
@@ -157,6 +217,7 @@ function updateWorldFromLevel(data) {
   }));
   ringsRequired = data.ringsRequired || rings.length;
   levelType = data.levelType || 'maze';
+  levelIsDark = data.isDark || false;
 
   levelBgColor = data.bgColor || '#1a3a58';
   levelGridColor = data.gridColor || 'rgba(30, 58, 85, 0.18)';
@@ -195,8 +256,53 @@ function updateWorldFromLevel(data) {
   currentRingIndex = 0;
   ringsCollected = 0;
 
+  // Сброс артефактов
+  winchState = 'idle';
+  winchCooldown = 0;
+  torpedoCooldown = 0;
+  torpedoes = [];
+  energy = MAX_ENERGY;
+  flashlightOn = false;
+
   updateZoom();
   updateCamera();
+}
+
+// ---------- Механики артефактов ----------
+function fireWinch() {
+  winchState = 'shooting';
+  winchHook.x = sub.x;
+  winchHook.y = sub.y;
+  const fx = Math.cos(sub.angle);
+  const fy = Math.sin(sub.angle);
+  winchHook.targetX = sub.x + fx * 300;
+  winchHook.targetY = sub.y + fy * 300;
+  winchHook.t = 0;
+  soundRing(); // Звук выстрела
+}
+
+function toggleFlashlight() {
+  if (energy <= 0 && !flashlightOn) {
+    showToast('⚡ Нет энергии!');
+    return;
+  }
+  flashlightOn = !flashlightOn;
+  soundRing(); // Щелчок
+}
+
+function fireTorpedo() {
+  const fx = Math.cos(sub.angle);
+  const fy = Math.sin(sub.angle);
+  torpedoes.push({
+    x: sub.x + fx * 20,
+    y: sub.y + fy * 20,
+    vx: fx * TORPEDO_SPEED,
+    vy: fy * TORPEDO_SPEED,
+    life: 2.0, // Живет 2 секунды
+    angle: sub.angle
+  });
+  torpedoCooldown = TORPEDO_COOLDOWN_MAX;
+  soundFishHit();
 }
 
 // ---------- Запуск уровня ----------
@@ -205,15 +311,36 @@ function startLevel(levelId) {
     showToast('⚠️ Уровень ' + levelId + ' не найден');
     return;
   }
+  
+  // Принудительно будим аудио-контекст (из-за политики браузеров)
+  if (typeof unlockAudio === 'function') {
+    unlockAudio();
+  }
+  
   currentLevelData = LEVELS[levelId];
   updateWorldFromLevel(currentLevelData);
   prepareRun();
   showScreen(null);
-  if (gameMusic) {
-    const musicSrc = currentLevelData.music || 'music/level1.mp3';
+  
+  // Переключение музыки уровня
+  if (gameMusic && musicEnabled) {
+    const musicSrc = currentLevelData.music || 'music/menu.mp3';
     const source = gameMusic.querySelector('source');
-    if (source) source.src = musicSrc;
-    gameMusic.load();
+    
+    if (source) {
+      const currentSrc = source.src || '';
+      // Если трек отличается от того, что играет сейчас
+      if (!currentSrc.includes(musicSrc)) {
+        source.src = musicSrc;
+        gameMusic.load();
+      }
+      
+      gameMusic.volume = (AUDIO_SETTINGS.gameMusicVolume || 0.45) * (musicVolumeMultiplier ? musicVolumeMultiplier() : 1);
+      
+      gameMusic.play().catch(() => {
+        console.warn('Браузер заблокировал музыку, ждем клика...');
+      });
+    }
   }
 }
 
@@ -249,8 +376,24 @@ function prepareRun() {
   lastTime = performance.now();
   started = true;
   running = true;
+  
+  // Ожидание старта
+  isWaiting = true;
+  const sh = el('startHint');
+  if (sh) sh.classList.remove('hidden');
+  
+  updateArtifactUI();
+  updateMinimapVisibility();  // <--- ЭТА СТРОКА ДОЛЖНА БЫТЬ
+  updateHud();
   checkOrientation();
 }
+
+function startActualRun() {
+  isWaiting = false;
+  const sh = el('startHint');
+  if (sh) sh.classList.add('hidden');
+}
+
 function generateDecorations() {
   seaFloorHills = [];
   for (let x = 0; x < 3200; x += 180) {
@@ -261,7 +404,6 @@ function generateDecorations() {
     });
   }
 
-  // Водоросли
   seaweeds = [];
   for (let x = 40; x < WORLD_W - 40; x += 90 + Math.random() * 60) {
     let tooClose = false;
@@ -321,8 +463,35 @@ function applyDamage(a, source) {
 // ---------- Главный update ----------
 function update(dt) {
   if (!running || !started || paused) return;
+  
+  // Если ждем старта — только анимация
+  if (isWaiting) {
+    sub.animTime += dt;
+    if (!isTouch && mouse.down) startActualRun();
+    if (isTouch && thrust.pressed) startActualRun();
+    return; 
+  }
+
   sub.animTime += dt;
 
+  // Таймеры артефактов
+  if (winchCooldown > 0) winchCooldown -= dt;
+  if (torpedoCooldown > 0) torpedoCooldown -= dt;
+
+  // Прожектор
+  if (flashlightOn) {
+    energy -= ENERGY_DRAIN * dt;
+    if (energy <= 0) {
+      energy = 0;
+      flashlightOn = false;
+      showToast('⚡ Энергия кончилась!');
+    }
+  } else {
+    energy += ENERGY_REGEN * dt;
+    if (energy > MAX_ENERGY) energy = MAX_ENERGY;
+  }
+
+  // Управление
   let targetAngle = null;
   if (isTouch && stick.active) {
     const len = Math.hypot(stick.dx, stick.dy);
@@ -343,32 +512,106 @@ function update(dt) {
   }
   sub.angle = normAngle(sub.angle + sub.angVel * dt);
 
+  // Движение и Лебедка
   const thrustOn = isTouch ? thrust.pressed : mouse.down;
-  const fx = Math.cos(sub.angle), fy = Math.sin(sub.angle);
-
-  if (thrustOn) {
-    sub.vx += (fx * sub.maxThrust - sub.vx) * sub.thrustAccel;
-    sub.vy += (fy * sub.maxThrust - sub.vy) * sub.thrustAccel;
+  
+  if (winchState === 'pulling') {
+    // Притягиваемся к крюку
+    const dx = winchHook.x - sub.x;
+    const dy = winchHook.y - sub.y;
+    const dist = Math.hypot(dx, dy);
+    
+    if (dist < 10) {
+      winchState = 'idle';
+      winchCooldown = WINCH_COOLDOWN_MAX;
+      sub.vx = 0; sub.vy = 0;
+    } else {
+      const pullSpeed = 600; // Скорость притяжения
+      sub.vx = (dx / dist) * pullSpeed;
+      sub.vy = (dy / dist) * pullSpeed;
+    }
   } else {
-    sub.vx += (0 - sub.vx) * sub.fallBlend;
-    sub.vy += (FALL_SPEED - sub.vy) * sub.fallBlend;
+    // Обычное движение
+    const fx = Math.cos(sub.angle), fy = Math.sin(sub.angle);
+    if (thrustOn) {
+      sub.vx += (fx * sub.maxThrust - sub.vx) * sub.thrustAccel;
+      sub.vy += (fy * sub.maxThrust - sub.vy) * sub.thrustAccel;
+      if (!motorActive) startMotor();
+      const intensity = Math.min(1, Math.hypot(sub.vx, sub.vy) / sub.maxThrust);
+      updateMotorSound(intensity);
+    } else {
+      sub.vx += (0 - sub.vx) * sub.fallBlend;
+      sub.vy += (FALL_SPEED - sub.vy) * sub.fallBlend;
+      if (motorActive) stopMotor();
+    }
   }
 
   sub.x += sub.vx * dt;
   sub.y += sub.vy * dt;
 
-  // Мотор
-  if (thrustOn) {
-    if (!motorActive) startMotor();
-    const intensity = Math.min(1, Math.hypot(sub.vx, sub.vy) / sub.maxThrust);
-    updateMotorSound(intensity);
-  } else {
-    if (motorActive) stopMotor();
+  // Логика выстрела копья
+  if (winchState === 'shooting') {
+    winchHook.t += dt;
+    // Достиг ли цели или стены
+    let hitWall = false;
+    for (const w of walls) {
+      if (circleVsSegment(winchHook.targetX, winchHook.targetY, 5, w.x1, w.y1, w.x2, w.y2).hit) {
+        hitWall = true; break;
+      }
+    }
+    
+    if (winchHook.t > 0.2 || hitWall) {
+      if (hitWall) {
+        // Отскочило от стены
+        winchHook.targetX = winchHook.x + Math.cos(sub.angle) * 100;
+        winchHook.targetY = winchHook.y + Math.sin(sub.angle) * 100;
+      }
+      winchHook.x = winchHook.targetX;
+      winchHook.y = winchHook.targetY;
+      winchState = 'pulling';
+    } else {
+      // Летит
+      const px = sub.x + Math.cos(sub.angle) * 300;
+      const py = sub.y + Math.sin(sub.angle) * 300;
+      winchHook.x = sub.x + (px - sub.x) * (winchHook.t / 0.2);
+      winchHook.y = sub.y + (py - sub.y) * (winchHook.t / 0.2);
+    }
+  }
+
+  // Логика торпед
+  for (let i = torpedoes.length - 1; i >= 0; i--) {
+    const t = torpedoes[i];
+    t.x += t.vx * dt;
+    t.y += t.vy * dt;
+    t.life -= dt;
+    
+    let hitSomething = false;
+    // Стены
+    for (const w of walls) {
+      if (circleVsSegment(t.x, t.y, 4, w.x1, w.y1, w.x2, w.y2).hit) { hitSomething = true; break; }
+    }
+    // Рыбы
+    if (!hitSomething) {
+      for (let j = fishes.length - 1; j >= 0; j--) {
+        const f = fishes[j];
+        const dx = f.x - t.x, dy = f.y - t.y;
+        if (dx*dx + dy*dy < (f.r + 10)*(f.r + 10)) {
+          fishes.splice(j, 1); // Убиваем рыбу
+          hitSomething = true;
+          break;
+        }
+      }
+    }
+    
+    if (hitSomething || t.life <= 0) {
+      torpedoes.splice(i, 1);
+    }
   }
 
   const speed = Math.hypot(sub.vx, sub.vy);
   sub.propellerAngle += (4 + speed * 0.15) * dt;
 
+  // Пузырьки от дрона
   sub.bubbleTimer -= dt;
   if (sub.bubbleTimer <= 0 && speed > 20) {
     sub.bubbleTimer = 0.08 + Math.random() * 0.12;
@@ -395,20 +638,9 @@ function update(dt) {
         soundRing();
       }
     }
-    for (let i = currentRingIndex + 1; i < rings.length; i++) {
-      const r = rings[i];
-      if (r.passed) continue;
-      const dx = sub.x - r.x, dy = sub.y - r.y;
-      if (Math.hypot(dx, dy) < r.r) {
-        if (!missedRingWarning) {
-          missedRingWarning = true;
-          setTimeout(() => { missedRingWarning = false; }, 2000);
-        }
-      }
-    }
   }
 
-  // Стены
+  // Стены (коллизия)
   let hitAny = false, firstHitInfo = null;
   for (const w of walls) {
     const res = circleVsSegment(sub.x, sub.y, sub.r, w.x1, w.y1, w.x2, w.y2);
@@ -435,7 +667,7 @@ function update(dt) {
     wallContactTime += dt; wallDamage += 4 * dt; sub.hp -= 4 * dt;
   }
 
-  // Рыбы
+  // Рыбы (движение и коллизия)
   for (const f of fishes) {
     f.wiggle += dt * 1.5;
     f.tailPhase += dt * 6;
@@ -462,76 +694,52 @@ function update(dt) {
 
     if (Math.abs(f.vx) > 5) f.dir = f.vx >= 0 ? 1 : -1;
 
-// ================================================================
-//  КОЛЛИЗИЯ С РЫБОЙ (эллипс) + ФОНАРИК УДИЛЬЩИКА (круг)
-// ================================================================
+    // Коллизия с дроном
+    const isAngler = f.type === 'angler';
+    const rx = isAngler ? f.r * 1.5 : f.r * 1.4;
+    const ry = isAngler ? f.r * 1.0 : f.r * 0.9;
+    const bodyDx = sub.x - f.x;
+    const bodyDy = sub.y - f.y;
+    const bodyNx = bodyDx / (rx + sub.r);
+    const bodyNy = bodyDy / (ry + sub.r);
+    const bodyDist = bodyNx * bodyNx + bodyNy * bodyNy;
+    const hitBody = bodyDist < 1;
 
-// Размеры эллипса рыбы (совпадают с визуалом)
-const isAngler = f.type === 'angler';
-const rx = isAngler ? f.r * 1.5 : f.r * 1.4;   // полуось X
-const ry = isAngler ? f.r * 1.0 : f.r * 0.9;   // полуось Y
+    let hitLure = false;
+    if (isAngler) {
+      const dirL = f.dir >= 0 ? 1 : -1;
+      const lureX = f.x + dirL * f.r * 0.9;
+      const lureY = f.y - f.r * 2.0;
+      const lureR = f.r * 0.35;
+      const lureDx = sub.x - lureX;
+      const lureDy = sub.y - lureY;
+      const lureRR = lureR + sub.r;
+      hitLure = (lureDx * lureDx + lureDy * lureDy) < (lureRR * lureRR);
+    }
 
-// Нормализованное расстояние до центра эллипса
-const bodyDx = sub.x - f.x;
-const bodyDy = sub.y - f.y;
-const bodyNx = bodyDx / (rx + sub.r);
-const bodyNy = bodyDy / (ry + sub.r);
-const bodyDist = bodyNx * bodyNx + bodyNy * bodyNy;
+    if (hitBody || hitLure) {
+      if (sub.invuln <= 0) {
+        fishHits++;
+        fishDamage += 12;
+        applyDamage(12, 'fish');
+      }
+    }
 
-let hitBody = bodyDist < 1;
-
-// Дополнительный хитбокс для фонарика-приманки удильщика
-let hitLure = false;
-if (isAngler) {
-  // Фонарик вынесен вперёд: центр в (f.r*0.9, -f.r*2.0) относительно рыбы,
-  // но с учётом направления dir
-  const dir = f.dir >= 0 ? 1 : -1;
-  const lureX = f.x + dir * f.r * 0.9;
-  const lureY = f.y - f.r * 2.0;
-  const lureR = f.r * 0.3;   // радиус светящегося шарика
-  const lureDx = sub.x - lureX;
-  const lureDy = sub.y - lureY;
-  const lureRR = lureR + sub.r;
-  hitLure = (lureDx * lureDx + lureDy * lureDy) < (lureRR * lureRR);
-}
-
-// ================================================================
-//  УРОН + ЖЁСТКОЕ ВЫТАЛКИВАНИЕ
-//  Урон — по эллипсу, выталкивание — по кругу с запасом
-// ================================================================
-
-// --- Урон: эллипс (точно как визуал) ---
-if (hitBody || hitLure) {
-  if (sub.invuln <= 0) {
-    fishHits++;
-    fishDamage += 12;
-    applyDamage(12, 'fish');
-  }
-}
-
-// --- Выталкивание: жёсткое, по большому кругу ---
-const pushRadius = Math.max(rx, ry) + sub.r * 0.5;   // запас 50%
-const dist = Math.hypot(bodyDx, bodyDy) || 1;
-
-if (dist < pushRadius) {
-  const ux = bodyDx / dist, uy = bodyDy / dist;
-  const overlap = pushRadius - dist;
-
-  // Мгновенно выталкиваем дрон наружу
-  sub.x += ux * overlap;
-  sub.y += uy * overlap;
-
-  // Гасим скорость, если она направлена внутрь рыбы
-  const vDot = sub.vx * ux + sub.vy * uy;
-  if (vDot < 0) {
-    sub.vx -= vDot * ux * 1.3;   // полное гашение + отскок
-    sub.vy -= vDot * uy * 1.3;
-  }
-
-  // Дополнительный импульс наружу
-  sub.vx += ux * 40;
-  sub.vy += uy * 40;
-}
+    const pushRadius = Math.max(rx, ry) + sub.r * 0.5;
+    const dist = Math.hypot(bodyDx, bodyDy) || 1;
+    if (dist < pushRadius) {
+      const ux = bodyDx / dist, uy = bodyDy / dist;
+      const overlap = pushRadius - dist;
+      sub.x += ux * overlap;
+      sub.y += uy * overlap;
+      const vDot = sub.vx * ux + sub.vy * uy;
+      if (vDot < 0) {
+        sub.vx -= vDot * ux * 1.3;
+        sub.vy -= vDot * uy * 1.3;
+      }
+      sub.vx += ux * 40;
+      sub.vy += uy * 40;
+    }
   }
 
   updateAmbientBubbles(dt);
@@ -545,7 +753,7 @@ if (dist < pushRadius) {
     if (levelType === 'rings' && ringsCollected < ringsRequired) {
       if (!finishBlockedWarning) {
         finishBlockedWarning = true;
-        showToast('🔒 Не собраны все благословенные кольца (' + ringsCollected + '/' + ringsRequired + ')');
+        showToast('🔒 Не собраны все кольца (' + ringsCollected + '/' + ringsRequired + ')');
         setTimeout(() => { finishBlockedWarning = false; }, 2500);
       }
     } else {
@@ -556,6 +764,7 @@ if (dist < pushRadius) {
 
   elapsed += dt;
   updateCamera();
+  updateHud();
 }
 
 function win() {
@@ -564,8 +773,15 @@ function win() {
   stopMotor();
   soundFinish();
   finalizeRun();
-  showStats('Сектор пройден!');
+  
+  // Если точность меньше 80, показываем заголовок "Недостаточно точности"
+  if (currentRun.accuracy < UNLOCK_THRESHOLD) {
+    showStats('Недостаточно точности');
+  } else {
+    showStats('Сектор пройден!');
+  }
 }
+
 function die() {
   running = false;
   resultState = 'dead';
@@ -575,54 +791,6 @@ function die() {
   showStats('Дрон потерян');
 }
 
-function finalizeRun() {
-  const totalTime = elapsed;
-  const accuracy = Math.max(0, Math.round(
-    100 - wallHits * 8 - wallContactTime * 4 - fishHits * 10
-    - Math.max(0, totalTime - 60) * 0.3
-  ));
-  currentRun = {
-    time: totalTime, accuracy,
-    wallHits, fishHits, wallContactTime,
-    fishDamage, wallDamage,
-    hp: Math.round(sub.hp),
-    resultState,
-    ringsCollected: ringsCollected,
-    ringsRequired: ringsRequired,
-    date: new Date().toLocaleString('ru-RU', {
-      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-    })
-  };
-  scoreSent = false;
-}
-
-// ---------- HUD ----------
-const hud = el('hud');
-const hpfill = el('hpfill');
-const hptext = el('hptext');
-
-function updateHud() {
-  let hudHtml = `Время: ${elapsed.toFixed(1)}s<br>`;
-  if (levelType === 'rings') {
-    hudHtml += `Кольца: ${ringsCollected}/${ringsRequired}<br>`;
-  }
-  hudHtml += `Касания стен: ${wallHits}<br>`;
-  hudHtml += `Корпус: ${Math.round(Math.max(0, sub.hp))}`;
-  hud.innerHTML = hudHtml;
-
-  const hpPct = Math.max(0, Math.min(100, sub.hp));
-  hpfill.style.width = hpPct + '%';
-  hptext.textContent = 'Корпус: ' + Math.round(hpPct);
-
-  if (hpPct > 60) hpfill.style.background = 'linear-gradient(90deg, #6ee787, #3ddc84)';
-  else if (hpPct > 30) hpfill.style.background = 'linear-gradient(90deg, #ffd166, #ffb347)';
-  else hpfill.style.background = 'linear-gradient(90deg, #ff6b6b, #e63946)';
-}
-
-// ---------- Отправка ----------
-
-
-// ---------- Статистика ----------
 async function showStats(title) {
   el('result-title').textContent = title;
   const run = currentRun;
@@ -659,35 +827,69 @@ async function showStats(title) {
     ['Вердикт', `<span class="${gradeClass}">${grade}</span>`]
   );
 
+  // 1. Генерируем HTML для основной статистики
   let html = '';
   for (const [k, v] of rows) {
     html += `<div class="row"><span>${k}</span><span class="val">${v}</span></div>`;
   }
-  el('stats').innerHTML = html;
 
-  if (run.resultState === 'win' && accuracy < UNLOCK_THRESHOLD) {
-    setTimeout(() => {
-      alert('Вы были недостаточно точны.\nНа последнем повороте ваш дрон потерпел крушение.\n\nДля перехода в следующий сектор нужно ≥ ' + UNLOCK_THRESHOLD + '% точности.');
-    }, 300);
+  // 2. Проверяем артефакт (если уровень пройден на 80%+)
+  let artifactHtml = '';
+  if (run.resultState === 'win' && accuracy >= UNLOCK_THRESHOLD) {
+    const artifactData = {
+      1: { key: 'map', icon: '🗺', name: 'Древняя Карта', desc: 'Теперь вы видите схему подводных залов. На экране появится миникарта.' },
+      2: { key: 'winch', icon: '⚙', name: 'Лебедка', desc: 'Позволяет делать быстрый рывок (ПКМ / кнопка).' },
+      3: { key: 'flashlight', icon: '💡', name: 'Прожектор', desc: 'Освещает темноту (СКМ / F). Тратит энергию.' },
+      4: { key: 'torpedo', icon: '🚀', name: 'Ракетомет', desc: 'Стреляет торпедами (Пробел / кнопка).' }
+    };
+
+    const art = artifactData[currentLevel];
+    if (art && !inventory[art.key]) {
+      // Выдаем артефакт
+      inventory[art.key] = true;
+      if (currentPlayer) {
+        saveInventoryForPlayer(currentPlayer.klass, currentPlayer.short);
+      }
+
+      // Формируем красивую плашку артефакта
+      artifactHtml = `
+        <div style="margin-top: 15px; padding: 15px; background: rgba(212, 162, 89, 0.15); border: 1px solid #d4a259; border-radius: 10px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+          <h3 style="color: #ffd166; margin: 0 0 10px; font-size: 16px; text-transform: uppercase; letter-spacing: 1px;">🎉 Получен новый артефакт!</h3>
+          <div style="font-size: 40px; margin-bottom: 10px; filter: drop-shadow(0 0 10px rgba(255,209,102,0.5));">${art.icon}</div>
+          <div style="font-size: 18px; color: #7fd6ff; font-weight: bold; margin-bottom: 8px;">${art.name}</div>
+          <div style="font-size: 13px; color: #d8e8f4; opacity: 0.9; line-height: 1.4;">${art.desc}</div>
+        </div>
+      `;
+    }
   }
 
-  el('sendStatus').textContent = '⏳ Отправка результата...';
-  el('sendStatus').style.color = '#ffd166';
+  // 3. Показываем экраны
+  if (run.resultState === 'win' && accuracy < UNLOCK_THRESHOLD) {
+    // Провал по точности
+    const failContainer = el('fail-stats-container');
+    // На экране провала артефакты не показываем (так как они не выдаются)
+    if (failContainer) failContainer.innerHTML = html;
+    showScreen('fail');
+  } else {
+    // Успех или смерть
+    const statsContainer = el('stats');
+    // Добавляем блок артефакта к статистике (если он есть)
+    if (statsContainer) statsContainer.innerHTML = html + artifactHtml;
+    showScreen('stats');
+  }
 
-  showScreen('stats');
-
+  // 4. Отправка результата
   if (!scoreSent && currentPlayer && run.resultState === 'win') {
     scoreSent = true;
     const result = await sendResult(currentLevel, accuracy);
     if (result.ok) {
-      el('sendStatus').textContent = '✅ Результат отправлен в таблицу';
-      el('sendStatus').style.color = '#6ee787';
+      const s = el('sendStatus'); if (s) { s.textContent = '✅ Результат отправлен в таблицу'; s.style.color = '#6ee787'; }
     } else {
-      el('sendStatus').textContent = '⚠️ Нет связи с таблицей';
-      el('sendStatus').style.color = '#ff6b6b';
+      const s = el('sendStatus'); if (s) { s.textContent = '⚠️ Нет связи с таблицей'; s.style.color = '#ff6b6b'; }
     }
   }
 
+  // 5. Обновляем прогресс
   if (run.resultState === 'win' && accuracy >= UNLOCK_THRESHOLD) {
     if (currentLevel + 1 > playerProgress && currentLevel < MAX_LEVEL) {
       playerProgress = currentLevel + 1;
@@ -695,71 +897,248 @@ async function showStats(title) {
   }
 }
 
-// ---------- Лидерборд ----------
+function finalizeRun() {
+  const totalTime = elapsed;
+  const accuracy = Math.max(0, Math.round(
+    100 - wallHits * 8 - wallContactTime * 4 - fishHits * 10
+    - Math.max(0, totalTime - 60) * 0.3
+  ));
+  currentRun = {
+    time: totalTime, accuracy,
+    wallHits, fishHits, wallContactTime,
+    fishDamage, wallDamage,
+    hp: Math.round(sub.hp),
+    resultState,
+    ringsCollected: ringsCollected,
+    ringsRequired: ringsRequired,
+    date: new Date().toLocaleString('ru-RU', {
+      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+    })
+  };
+  scoreSent = false;
+}
+
+// ---------- HUD ----------
+const hud = el('hud');
+const hpfill = el('hpfill');
+const hptext = el('hptext');
+const energybar = el('energybar');
+const energyfill = el('energyfill');
+const energytext = el('energytext');
+
+function updateHud() {
+  if (!hud) return; // Защита
+
+  let hudHtml = `Время: ${elapsed.toFixed(1)}s<br>`;
+  if (levelType === 'rings') {
+    hudHtml += `Кольца: ${ringsCollected}/${ringsRequired}<br>`;
+  }
+  hudHtml += `Касания стен: ${wallHits}<br>`;
+  hudHtml += `Корпус: ${Math.round(Math.max(0, sub.hp))}`;
+  hud.innerHTML = hudHtml;
+
+  const hpPct = Math.max(0, Math.min(100, sub.hp));
+  if (hpfill) {
+    hpfill.style.width = hpPct + '%';
+    if (hpPct > 60) hpfill.style.background = 'linear-gradient(90deg, #6ee787, #3ddc84)';
+    else if (hpPct > 30) hpfill.style.background = 'linear-gradient(90deg, #ffd166, #ffb347)';
+    else hpfill.style.background = 'linear-gradient(90deg, #ff6b6b, #e63946)';
+  }
+  if (hptext) hptext.textContent = 'Корпус: ' + Math.round(hpPct);
+
+  // Энергия
+  if (inventory.flashlight) {
+    if (energybar) energybar.classList.remove('hidden');
+    if (energytext) energytext.classList.remove('hidden');
+    const ePct = Math.max(0, Math.min(100, (energy / MAX_ENERGY) * 100));
+    if (energyfill) energyfill.style.width = ePct + '%';
+    if (energytext) energytext.textContent = 'Энергия: ' + Math.round(ePct);
+    if (energybar) {
+      if (flashlightOn) energybar.style.borderColor = '#ffd166';
+      else energybar.style.borderColor = '#1e3a55';
+    }
+  } else {
+    if (energybar) energybar.classList.add('hidden');
+    if (energytext) energytext.classList.add('hidden');
+  }
+
+  // Кулдауны
+  const winchCd = el('winchCd');
+  const torpedoCd = el('torpedoCd');
+  
+  if (winchCd) {
+    if (inventory.winch) {
+      winchCd.style.display = 'flex';
+      const fill = winchCd.querySelector('.fill');
+      if (winchCooldown > 0) {
+        winchCd.classList.remove('ready');
+        if (fill) fill.style.transform = `scaleY(${winchCooldown / WINCH_COOLDOWN_MAX})`;
+      } else {
+        winchCd.classList.add('ready');
+        if (fill) fill.style.transform = `scaleY(0)`;
+      }
+    } else {
+      winchCd.style.display = 'none';
+    }
+  }
+
+  if (torpedoCd) {
+    if (inventory.torpedo) {
+      torpedoCd.style.display = 'flex';
+      const fill = torpedoCd.querySelector('.fill');
+      if (torpedoCooldown > 0) {
+        torpedoCd.classList.remove('ready');
+        if (fill) fill.style.transform = `scaleY(${torpedoCooldown / TORPEDO_COOLDOWN_MAX})`;
+      } else {
+        torpedoCd.classList.add('ready');
+        if (fill) fill.style.transform = `scaleY(0)`;
+      }
+    } else {
+      torpedoCd.style.display = 'none';
+    }
+  }
+}
+
+// ---------- Статистика ----------
 
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, ch => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  }[ch]));
+function showArtifactScreen(art) {
+  el('artifact-title').textContent = 'Вы нашли артефакт!';
+  el('artifact-icon').textContent = art.icon;
+  el('artifact-name').textContent = art.name;
+  el('artifact-desc').textContent = art.desc;
+  showScreen('artifact');
+  updateArtifactUI();
 }
 
 // ---------- Кнопки игрового меню ----------
-el('pauseBtn').addEventListener('click', togglePause);
-el('pauseResume').addEventListener('click', () => {
-  paused = false; el('pauseOverlay').classList.remove('show');
+const pauseBtn = el('pauseBtn');
+if (pauseBtn) pauseBtn.addEventListener('click', togglePause);
+
+const pauseResume = el('pauseResume');
+if (pauseResume) pauseResume.addEventListener('click', () => {
+  paused = false; 
+  const po = el('pauseOverlay'); if (po) po.classList.remove('show');
   if (musicEnabled) switchMusic('game');
 });
-el('pauseRestart').addEventListener('click', () => {
-  paused = false; el('pauseOverlay').classList.remove('show');
+
+const pauseRestart = el('pauseRestart');
+if (pauseRestart) pauseRestart.addEventListener('click', () => {
+  paused = false; 
+  const po = el('pauseOverlay'); if (po) po.classList.remove('show');
   startLevel(currentLevel);
 });
-el('pauseExit').addEventListener('click', () => {
-  paused = false; el('pauseOverlay').classList.remove('show');
-  goToMap();
-});
-el('restartBtn').addEventListener('click', () => { startLevel(currentLevel); });
-el('exitBtn').addEventListener('click', goToMap);
 
-el('storyBack').addEventListener('click', () => {
-  if (currentPlayer) goToMap(); else showScreen('splash');
-});
-el('controlsBack').addEventListener('click', () => {
-  if (currentPlayer) goToMap(); else showScreen('splash');
-});
-el('optionsBack').addEventListener('click', () => {
-  if (currentPlayer) goToMap(); else showScreen('splash');
-});
-el('statsRestart').addEventListener('click', () => { startLevel(currentLevel); });
-el('statsMap').addEventListener('click', goToMap);
-el('statsMenu').addEventListener('click', goToMap);
-el('lbBack').addEventListener('click', () => {
-  if (currentPlayer) goToMap(); else showScreen('splash');
-});
-
-el('playBtn').addEventListener('click', () => {
-  unlockAudio();
-  startMusicIfAllowed();
+const pauseChange = el('pauseChangePlayer');
+if (pauseChange) pauseChange.addEventListener('click', () => {
+  paused = false; 
+  const po = el('pauseOverlay'); if (po) po.classList.remove('show');
   goToSelectPlayer();
 });
 
-el('opt-quality').addEventListener('change', (e) => {
-  qualityLevel = e.target.value;
-  try { localStorage.setItem('pogruzhenie_quality', qualityLevel); } catch (e) {}
-  showToast('Качество: ' + qualityLevel);
+const pauseExit = el('pauseExit');
+if (pauseExit) pauseExit.addEventListener('click', () => {
+  paused = false; 
+  const po = el('pauseOverlay'); if (po) po.classList.remove('show');
+  goToMap();
 });
-el('opt-render').addEventListener('change', (e) => {
-  renderScale = parseFloat(e.target.value);
-  try { localStorage.setItem('pogruzhenie_render_scale', renderScale.toString()); } catch (e) {}
-  resize();
-  showToast('Разрешение: ' + renderScale);
-});
+
+const restartBtn = el('restartBtn');
+if (restartBtn) restartBtn.addEventListener('click', () => { startLevel(currentLevel); });
+
+const exitBtn = el('exitBtn');
+if (exitBtn) exitBtn.addEventListener('click', goToMap);
+
+const artBtn = el('artifactContinueBtn');
+if (artBtn) artBtn.addEventListener('click', goToMap);
+
+const playBtn = el('playBtn');
+if (playBtn) {
+  playBtn.addEventListener('click', () => {
+    unlockAudio();
+    startMusicIfAllowed();
+    goToSelectPlayer();
+  });
+}
+
+// Кнопки экрана статистики
+const statsRestartBtn = el('statsRestart');
+if (statsRestartBtn) statsRestartBtn.addEventListener('click', () => { startLevel(currentLevel); });
+
+const statsMapBtn = el('statsMap');
+if (statsMapBtn) statsMapBtn.addEventListener('click', goToMap);
+
+const statsMenuBtn = el('statsMenu');
+if (statsMenuBtn) statsMenuBtn.addEventListener('click', goToMap);
+
+// Кнопка экрана "Недостаточно точности"
+const failContinueBtn = el('failContinueBtn');
+if (failContinueBtn) {
+  failContinueBtn.addEventListener('click', () => {
+    goToMap();
+  });
+}
+// ================================================================
+//  КНОПКИ НАВИГАЦИИ (ИСТОРИЯ, УПРАВЛЕНИЕ, ПАРАМЕТРЫ, ЛИДЕРБОРД)
+// ================================================================
+const storyBackBtn = el('storyBack');
+if (storyBackBtn) {
+  storyBackBtn.addEventListener('click', () => {
+    if (currentPlayer) goToMap(); else showScreen('splash');
+  });
+}
+
+const controlsBackBtn = el('controlsBack');
+if (controlsBackBtn) {
+  controlsBackBtn.addEventListener('click', () => {
+    if (currentPlayer) goToMap(); else showScreen('splash');
+  });
+}
+
+const optionsBackBtn = el('optionsBack');
+if (optionsBackBtn) {
+  optionsBackBtn.addEventListener('click', () => {
+    if (currentPlayer) goToMap(); else showScreen('splash');
+  });
+}
+
+const lbBackBtn = el('lbBack');
+if (lbBackBtn) {
+  lbBackBtn.addEventListener('click', () => {
+    if (currentPlayer) goToMap(); else showScreen('splash');
+  });
+}
+
+// ================================================================
+//  ПЕРЕКЛЮЧАТЕЛИ КАЧЕСТВА В ПАРАМЕТРАХ (чтобы не пропали)
+// ================================================================
+const optQuality = el('opt-quality');
+if (optQuality) {
+  optQuality.value = qualityLevel;
+  optQuality.addEventListener('change', (e) => {
+    qualityLevel = e.target.value;
+    try { localStorage.setItem('pogruzhenie_quality', qualityLevel); } catch (err) {}
+    showToast('Качество: ' + qualityLevel);
+  });
+}
+
+const optRender = el('opt-render');
+if (optRender) {
+  optRender.value = renderScale.toString();
+  optRender.addEventListener('change', (e) => {
+    renderScale = parseFloat(e.target.value);
+    try { localStorage.setItem('pogruzhenie_render_scale', renderScale.toString()); } catch (err) {}
+    if (typeof resize === 'function') resize();
+    showToast('Разрешение: ' + renderScale);
+  });
+}
 
 // ---------- goToMap ----------
 function goToMap() {
   started = false; running = false; paused = false;
   el('pauseOverlay').classList.remove('show');
   stickEnd(); thrustUp(); stopMotor();
+  updateMinimapVisibility();  // <-- добавить сюда
   updateMapInfo();
   showScreen('map');
 }
@@ -771,7 +1150,6 @@ function loop(now) {
   if (started) {
     update(dt);
     draw();
-    updateHud();
   } else {
     sub.animTime += dt;
   }
@@ -785,13 +1163,19 @@ resize();
 updateCamera();
 showScreen('splash');
 lastTime = performance.now();
+function updateMinimapVisibility() {
+  const mm = el('minimap-container');
+  if (!mm) {
+    console.warn('Элемент #minimap-container не найден в HTML');
+    return;
+  }
+  
+  if (typeof inventory !== 'undefined' && inventory.map && started) {
+    mm.classList.remove('hidden');
+  } else {
+    mm.classList.add('hidden');
+  }
+}
 requestAnimationFrame(loop);
-
-setTimeout(() => {
-  const optQ = el('opt-quality');
-  const optR = el('opt-render');
-  if (optQ) optQ.value = qualityLevel;
-  if (optR) optR.value = renderScale.toString();
-}, 100);
 
 checkOrientation();

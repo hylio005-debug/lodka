@@ -79,6 +79,7 @@ function switchMusic(track) {
   if (menuMusic) menuMusic.pause();
   if (gameMusic) gameMusic.pause();
   if (!musicEnabled) return;
+  
   if (track === 'menu' && menuMusic) {
     menuMusic.volume = AUDIO_SETTINGS.menuMusicVolume * musicVolumeMultiplier();
     menuMusic.play().catch(() => {});

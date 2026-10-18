@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Погружение (v3.1)</title>
+<style>
+  html, body {
+    margin: 0;
+    background: #0b1a2a;
+    color: #eaf6ff;
+    font-family: system-ui, sans-serif;
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: none;
+  }
+  canvas { display: block; background: #1a3a58; cursor: crosshair; touch-action: none; }
+
+  .overlay {
+    position: fixed; inset: 0;
+    display: none;
+    align-items: center; justify-content: center;
+    padding: 20px;
+    z-index: 10;
+    background: radial-gradient(circle at 50% 30%, rgba(30, 80, 130, 0.85), rgba(8, 18, 32, 0.96) 70%);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .overlay.show { display: flex; }
+
+  .panel {
+    background: #0e2233;
+    border: 1px solid #1e3a55;
+    border-radius: 14px;
+    padding: 28px 32px;
+    max-width: 720px;
+    width: 100%;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+    text-align: center;
+    margin: auto;
+  }
+  .panel h1 { margin: 0 0 6px; font-size: 34px; letter-spacing: 1px; color: #7fd6ff; }
+  .panel h2 { margin: 0 0 16px; font-size: 24px; }
+  .panel p { font-size: 15px; opacity: 0.85; line-height: 1.55; margin: 8px 0; }
+
+  .version-badge {
+    display: inline-block;
+    background: rgba(212, 162, 89, 0.2);
+    border: 1px solid #d4a259;
+    color: #ffd166;
+    font-family: monospace;
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    margin-bottom: 10px;
+    letter-spacing: 1px;
+  }
+
+  .story-text {
+    text-align: left;
+    font-size: 17px;
+    line-height: 1.75;
+    margin: 20px 0;
+    background: #0a1a28;
+    border: 1px solid #1e3a55;
+    border-left: 5px solid #d4a259;
+    border-radius: 10px;
+    padding: 20px 24px;
+    color: #d8e8f4;
+  }
+  .story-text b { color: #ffd166; }
+  .story-text em { color: #7fd6ff; font-style: normal; }
+
+  .btn {
+    display: inline-block;
+    padding: 12px 24px;
+    margin: 6px;
+    background: #1f6feb;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 15px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.05s;
+    touch-action: manipulation;
+    font-family: inherit;
+  }
+  .btn:hover { background: #2b7fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn:disabled:hover { background: #1f6feb; }
+  .btn.secondary { background: #14324a; border: 1px solid #1e3a55; }
+  .btn.secondary:hover { background: #1a3f5c; }
+  .btn.gold {
+    background: linear-gradient(145deg, #d4a259, #a87c37);
+    color: #1a0d00;
+    font-weight: 600;
+  }
+  .btn.gold:hover { background: linear-gradient(145deg, #e5b46b, #b88a40); }
+  .btn.danger { background: #7a1f2a; border: 1px solid #b83a4a; }
+  .btn.danger:hover { background: #9c2734; }
+
+  .play-btn {
+    width: 130px; height: 130px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #2b7fff, #1f6feb);
+    border: 4px solid #d4a259;
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer; margin: 24px 0 8px;
+    box-shadow: 0 0 0 0 rgba(212, 162, 89, 0.5);
+    animation: pulse 2s infinite;
+    transition: transform 0.1s;
+    touch-action: manipulation;
+  }
+  .play-btn:hover { transform: scale(1.06); }
+  .play-btn:active { transform: scale(0.96); }
+  .play-btn svg { margin-left: 6px; }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(212, 162, 89, 0.5); }
+    70%  { box-shadow: 0 0 0 22px rgba(212, 162, 89, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(212, 162, 89, 0); }
+  }
+
+  .menu-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+  .menu-list .btn { width: 100%; padding: 14px; font-size: 16px; }
+
+  #hud {
+    position: absolute; top: 10px; left: 10px;
+    font-family: monospace; font-size: 13px;
+    background: rgba(7, 19, 32, 0.75);
+    padding: 8px 12px; border: 1px solid #1e3a55;
+    border-radius: 8px; pointer-events: none; line-height: 1.5;
+  }
+  #hpbar {
+    position: absolute;
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    left: calc(20px + env(safe-area-inset-left, 0px));
+    width: 180px; height: 24px;
+    background: rgba(7, 19, 32, 0.85);
+    border: 2px solid #1e3a55; border-radius: 8px;
+    overflow: hidden; pointer-events: none;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+    z-index: 2;
+  }
+  #hpfill {
+    height: 100%; width: 100%;
+    background: linear-gradient(90deg, #6ee787, #3ddc84);
+    transition: width 0.15s linear, background 0.2s;
+  }
+  #hptext {
+    position: absolute;
+    bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+    left: calc(28px + env(safe-area-inset-left, 0px));
+    font-family: monospace; font-size: 13px;
+    font-weight: bold;
+    pointer-events: none;
+    color: #ffffff;
+    text-shadow: 0 0 4px #000, 0 0 8px rgba(0,0,0,0.8);
+    z-index: 3;
+  }
+
+  #hint {
+    position: absolute; bottom: 12px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 13px; opacity: 0.8;
+    background: rgba(7, 19, 32, 0.75);
+    padding: 6px 14px; border-radius: 8px;
+    pointer-events: none; white-space: nowrap;
+    max-width: 90vw; overflow: hidden; text-overflow: ellipsis;
+  }
+  body.input-touch #hint { display: none; }
+  .hidden { display: none !important; }
+
+  #gameControls {
+    position: absolute; top: 10px; right: 110px;
+    display: flex; gap: 6px;
+    z-index: 50;
+    pointer-events: auto;
+  }
+  .gc-btn {
+    width: 42px; height: 42px;
+    border-radius: 10px;
+    background: rgba(7, 19, 32, 0.85);
+    border: 1px solid #1e3a55;
+    color: #7fd6ff;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    padding: 0;
+    font-family: inherit;
+    font-size: 18px;
+    touch-action: manipulation;
+  }
+  .gc-btn:hover { background: rgba(20, 50, 74, 0.95); border-color: #2b7fff; }
+  .gc-btn:active { transform: scale(0.94); }
+
+  #ctrlPanel {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    display: flex;
+    gap: 6px;
+    z-index: 300;
+  }
+  #fsBtn, #winBtn, #muteBtn {
+    width: 44px; height: 44px;
+    border-radius: 10px;
+    background: rgba(7, 19, 32, 0.85);
+    border: 1px solid #1e3a55;
+    color: #7fd6ff;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    padding: 0;
+    font-family: inherit;
+    font-size: 20px;
+    touch-action: manipulation;
+  }
+  #fsBtn:hover, #winBtn:hover, #muteBtn:hover {
+    background: rgba(20, 50, 74, 0.95); border-color: #2b7fff;
+  }
+  #fsBtn:active, #winBtn:active, #muteBtn:active { transform: scale(0.94); }
+  #fsBtn svg, #winBtn svg { display: block; }
+
+  .player-badge {
+    position: absolute; top: 10px; left: 50%;
+    transform: translateX(-50%);
+    font-family: monospace;
+    font-size: 12px;
+    background: rgba(7, 19, 32, 0.85);
+    padding: 5px 12px;
+    border: 1px solid #d4a259;
+    border-radius: 20px;
+    color: #ffd166;
+    pointer-events: none;
+    white-space: nowrap;
+    z-index: 5;
+  }
+
+  .row {
+    display: flex; justify-content: space-between;
+    padding: 6px 0; border-bottom: 1px dashed #1e3a55;
+    font-family: monospace; font-size: 14px;
+    text-align: left;
+  }
+  .row:last-child { border-bottom: none; }
+  .val { color: #7fd6ff; }
+  .good { color: #6ee787; }
+  .warn { color: #ffd166; }
+  .bad  { color: #ff6b6b; }
+
+  .controls-list {
+    text-align: left;
+    font-family: monospace;
+    font-size: 14px;
+    line-height: 1.7;
+    margin: 12px 0;
+    background: #0a1a28;
+    border: 1px solid #1e3a55;
+    border-radius: 8px;
+    padding: 12px 16px;
+  }
+  .controls-list b { color: #7fd6ff; }
+
+  .leaderboard {
+    width: 100%; border-collapse: collapse; margin: 12px 0;
+    font-family: monospace; font-size: 14px;
+  }
+  .leaderboard th, .leaderboard td {
+    padding: 8px 10px; text-align: left; border-bottom: 1px solid #1e3a55;
+  }
+  .leaderboard th {
+    color: #7fd6ff; font-weight: 500; font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .leaderboard tr.top1 td { color: #ffd166; font-weight: bold; }
+  .leaderboard tr.top2 td { color: #cfd8e0; }
+  .leaderboard tr.top3 td { color: #d29060; }
+  .leaderboard td.rank { width: 40px; text-align: center; }
+  .leaderboard td.score { text-align: right; color: #6ee787; }
+  .empty-msg {
+    text-align: center; opacity: 0.6; padding: 24px 0; font-style: italic;
+  }
+
+  .choice-tabs {
+    display: flex; gap: 6px;
+    margin: 16px 0 10px;
+    background: #0a1a28;
+    border: 1px solid #1e3a55;
+    border-radius: 10px;
+    padding: 4px;
+  }
+  .choice-tab {
+    flex: 1;
+    padding: 12px 8px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: #7fd6ff;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+    touch-action: manipulation;
+  }
+  .choice-tab.active {
+    background: linear-gradient(145deg, #2b7fff, #1f6feb);
+    color: #ffffff;
+  }
+  .choice-pane { display: none; }
+  .choice-pane.active { display: block; }
+
+  .select-block { text-align: left; margin: 12px 0; }
+  .select-block label {
+    display: block;
+    font-family: monospace;
+    font-size: 13px;
+    opacity: 0.8;
+    margin-bottom: 6px;
+  }
+  .select-block select,
+  .select-block input[type="text"] {
+    width: 100%;
+    padding: 12px 16px;
+    background: #0a1a28;
+    border: 1px solid #1e3a55;
+    border-radius: 8px;
+    color: #eaf6ff;
+    font-size: 16px;
+    font-family: inherit;
+    box-sizing: border-box;
+  }
+  .select-block select:focus,
+  .select-block input:focus { outline: none; border-color: #2b7fff; }
+  .select-block select:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  #loadingMsg {
+    padding: 20px;
+    font-family: monospace;
+    font-size: 14px;
+    color: #7fd6ff;
+    text-align: center;
+  }
+
+  .selected-preview {
+    margin: 12px 0;
+    padding: 12px 16px;
+    background: rgba(212, 162, 89, 0.15);
+    border: 1px solid #d4a259;
+    border-radius: 8px;
+    font-family: monospace;
+    font-size: 15px;
+    color: #ffd166;
+    text-align: center;
+    font-weight: 600;
+    letter-spacing: 1px;
+  }
+
+  #pauseOverlay {
+    position: fixed; inset: 0;
+    display: none;
+    align-items: center; justify-content: center;
+    background: rgba(4, 12, 22, 0.85);
+    z-index: 200;
+    padding: 20px;
+  }
+  #pauseOverlay.show { display: flex; }
+  #pausePanel {
+    background: #0e2233;
+    border: 1px solid #1e3a55;
+    border-radius: 14px;
+    padding: 32px 40px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+    max-width: 400px;
+    width: 100%;
+  }
+  #pausePanel h2 { margin: 0 0 20px; color: #7fd6ff; }
+  #pausePanel .btn { display: block; width: 100%; margin: 8px 0; }
+
+  .game-toast {
+    position: fixed;
+    bottom: 76px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.9);
+    color: #7fd6ff;
+    padding: 8px 18px;
+    border-radius: 20px;
+    font-size: 13px;
+    z-index: 400;
+    font-family: monospace;
+    pointer-events: none;
+    white-space: nowrap;
+    border: 1px solid #2b7fff;
+    animation: toastFade 2.2s ease forwards;
+  }
+  @keyframes toastFade {
+    0%   { opacity: 1; transform: translateX(-50%) translateY(0); }
+    70%  { opacity: 1; }
+    100% { opacity: 0; transform: translateX(-50%) translateY(-20px); visibility: hidden; }
+  }
+
+  .server-status {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    font-family: monospace;
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 10px;
+    background: rgba(7, 19, 32, 0.8);
+    border: 1px solid #1e3a55;
+    z-index: 150;
+    pointer-events: none;
+  }
+  .server-status.online { color: #6ee787; border-color: #6ee787; }
+  .server-status.offline { color: #ff6b6b; border-color: #ff6b6b; }
+  .server-status.checking { color: #ffd166; border-color: #ffd166; }
+
+  #thrustButton {
+    display: none;
+    position: fixed;
+    bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+    left: calc(26px + env(safe-area-inset-left, 0px));
+    z-index: 60;
+    touch-action: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    opacity: 0.35;
+    transition: opacity 0.3s;
+  }
+  body.input-touch #thrustButton:not(.hidden) { display: block; }
+  #thrustButton:active,
+  #thrustButton.active { opacity: 0.85; }
+
+  #thrustBtn {
+    width: 130px; height: 130px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 38% 35%, #ff9a6a, #c9482a);
+    border: 3px solid #ffd166;
+    color: #ffffff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    font-family: monospace;
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 1.5px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;
+    box-shadow: 0 0 34px rgba(255, 120, 60, 0.45);
+    transition: transform 0.08s, box-shadow 0.08s, background 0.08s;
+    padding: 0;
+    text-shadow: 0 0 6px rgba(0,0,0,0.6);
+  }
+  #thrustBtn svg {
+    width: 38px; height: 38px;
+    stroke: currentColor;
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    fill: none;
+    pointer-events: none;
+  }
+  #thrustBtn .label { pointer-events: none; font-size: 11px; opacity: 0.95; }
+  #thrustBtn.active {
+    transform: scale(0.94);
+    background: radial-gradient(circle at 38% 35%, #ffd166, #ff6a3a);
+    border-color: #ffffff;
+    box-shadow: 0 0 50px rgba(255, 200, 80, 0.95);
+  }
+
+  #mobileControls {
+    display: none;
+    position: fixed;
+    bottom: calc(26px + env(safe-area-inset-bottom, 0px));
+    right: calc(26px + env(safe-area-inset-right, 0px));
+    width: 150px; height: 150px;
+    z-index: 60;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    opacity: 0.35;
+    transition: opacity 0.3s;
+  }
+  body.input-touch #mobileControls:not(.hidden) { display: block; }
+  #mobileControls:active,
+  #mobileControls.active { opacity: 0.85; }
+
+  #joystickBase {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: rgba(7, 19, 32, 0.5);
+    border: 2px solid rgba(127, 214, 255, 0.4);
+    box-shadow: inset 0 0 24px rgba(127, 214, 255, 0.15);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    transition: border-color 0.15s, background 0.15s;
+    touch-action: none;
+  }
+  #joystickBase.active {
+    border-color: #7fd6ff;
+    background: rgba(20, 50, 74, 0.65);
+  }
+  #joystickKnob {
+    position: absolute;
+    width: 62px; height: 62px;
+    left: 50%; top: 50%;
+    margin-left: -31px; margin-top: -31px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #a4dfff, #4a9edb);
+    border: 2px solid #7fd6ff;
+    box-shadow: 0 0 22px rgba(127, 214, 255, 0.6);
+    pointer-events: none;
+    will-change: transform;
+    transition: box-shadow 0.15s;
+  }
+  #joystickBase.active #joystickKnob {
+    box-shadow: 0 0 34px rgba(127, 214, 255, 0.95);
+  }
+
+  #portraitWarning {
+    position: fixed; inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: #0b1a2a;
+    z-index: 500;
+    text-align: center;
+    padding: 20px;
+  }
+  #portraitWarning.show { display: flex; }
+  #portraitWarning .content { max-width: 320px; }
+  #portraitWarning .rot-icon {
+    font-size: 80px;
+    margin-bottom: 20px;
+    animation: rotatePhone 2s infinite;
+    display: inline-block;
+  }
+  @keyframes rotatePhone {
+    0%   { transform: rotate(0deg); }
+    25%  { transform: rotate(-90deg); }
+    50%  { transform: rotate(-90deg); }
+    75%  { transform: rotate(0deg); }
+    100% { transform: rotate(0deg); }
+  }
+  #portraitWarning h2 { color: #7fd6ff; font-size: 22px; margin: 0 0 12px; }
+  #portraitWarning p { color: #d8e8f4; font-size: 15px; opacity: 0.85; }
+
+  @media (max-width: 700px) {
+    #hud { font-size: 11px; padding: 5px 8px; }
+    #gameControls { right: 110px; }
+    .gc-btn { width: 38px; height: 38px; font-size: 16px; }
+    .player-badge { font-size: 11px; padding: 4px 10px; }
+    #mobileControls { width: 132px; height: 132px; }
+    #joystickKnob { width: 56px; height: 56px; margin-left: -28px; margin-top: -28px; }
+    #thrustBtn { width: 116px; height: 116px; }
+    #thrustBtn svg { width: 34px; height: 34px; }
+    .panel { padding: 22px 20px; }
+    .panel h1 { font-size: 26px; }
+    .panel h2 { font-size: 19px; }
+    #fsBtn, #winBtn, #muteBtn { width: 40px; height: 40px; font-size: 18px; }
+    #hpbar {
+      width: 150px; height: 22px;
+      bottom: calc(160px + env(safe-area-inset-bottom, 0px));
+    }
+    #hptext {
+      font-size: 12px;
+      bottom: calc(163px + env(safe-area-inset-bottom, 0px));
+    }
+    #thrustButton { bottom: calc(26px + env(safe-area-inset-bottom, 0px)); }
+  }
+
+  @media (max-width: 500px) {
+    #hud { font-size: 10px; }
+    #gameControls { right: 100px; gap: 4px; }
+    .gc-btn { width: 34px; height: 34px; font-size: 14px; }
+    #mobileControls {
+      width: 120px; height: 120px;
+      bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+      right: calc(16px + env(safe-area-inset-right, 0px));
+    }
+    #thrustButton {
+      bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+      left: calc(16px + env(safe-area-inset-left, 0px));
+    }
+    #thrustBtn { width: 104px; height: 104px; font-size: 11px; }
+    #thrustBtn svg { width: 30px; height: 30px; }
+    #joystickKnob { width: 52px; height: 52px; margin-left: -26px; margin-top: -26px; }
+    .play-btn { width: 100px; height: 100px; }
+    #fsBtn, #winBtn, #muteBtn { width: 36px; height: 36px; font-size: 16px; }
+    #hpbar {
+      width: 130px; height: 20px;
+      bottom: calc(135px + env(safe-area-inset-bottom, 0px));
+      left: calc(16px + env(safe-area-inset-left, 0px));
+    }
+    #hptext {
+      font-size: 11px;
+      bottom: calc(138px + env(safe-area-inset-bottom, 0px));
+      left: calc(24px + env(safe-area-inset-left, 0px));
+    }
+  }
+    /* ============================================================
+     НАСТРОЙКИ ЗВУКА В ПАУЗЕ
+     ============================================================ */
+  #pausePanel {
+    max-width: 480px;
+    max-height: 92vh;
+    overflow-y: auto;
+  }
+
+  #soundSettings {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid #1e3a55;
+    text-align: left;
+  }
+  #soundSettings h3 {
+    margin: 0 0 14px;
+    font-size: 17px;
+    color: #7fd6ff;
+    text-align: center;
+  }
+
+  .slider-row {
+    display: grid;
+    grid-template-columns: 90px 1fr 40px;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 10px;
+    font-family: monospace;
+    font-size: 13px;
+  }
+  .slider-row label {
+    color: #d8e8f4;
+    opacity: 0.9;
+  }
+  .slider-val {
+    text-align: right;
+    color: #ffd166;
+    font-weight: bold;
+  }
+
+  .slider-row input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    background: linear-gradient(90deg, #1f6feb, #7fd6ff);
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .slider-row input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #ffffff, #7fd6ff);
+    border: 2px solid #1f6feb;
+    box-shadow: 0 0 10px rgba(127, 214, 255, 0.7);
+    cursor: pointer;
+  }
+  .slider-row input[type="range"]::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #ffffff, #7fd6ff);
+    border: 2px solid #1f6feb;
+    box-shadow: 0 0 10px rgba(127, 214, 255, 0.7);
+    cursor: pointer;
+  }
+
+  .sound-test-btns {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .test-btn {
+    flex: 1;
+    min-width: 100px;
+    padding: 10px 14px;
+    background: linear-gradient(145deg, #14324a, #0e2233);
+    color: #7fd6ff;
+    border: 1px solid #1e3a55;
+    border-radius: 8px;
+    font-family: monospace;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s, border-color 0.15s;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .test-btn:hover {
+    background: linear-gradient(145deg, #1a3f5c, #14324a);
+    border-color: #2b7fff;
+  }
+  .test-btn:active {
+    transform: scale(0.96);
+    background: linear-gradient(145deg, #2b7fff, #1f6feb);
+    color: #ffffff;
+  }
+  .test-btn.playing {
+    background: linear-gradient(145deg, #d4a259, #a87c37);
+    color: #1a0d00;
+    border-color: #ffd166;
+  }
+
+  @media (max-width: 500px) {
+    .slider-row {
+      grid-template-columns: 70px 1fr 36px;
+      font-size: 12px;
+      gap: 6px;
+    }
+    .test-btn {
+      font-size: 12px;
+      padding: 8px 10px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="game" class="hidden"></canvas>
+
+<audio id="menuMusic" loop preload="auto" style="display:none;">
+  <source src="music/menu.mp3" type="audio/mpeg">
+</audio>
+<audio id="gameMusic" loop preload="auto" style="display:none;">
+  <source src="music/level1.mp3" type="audio/mpeg">
+</audio>
+
+<div id="hud" class="hidden"></div>
+<div id="hpbar" class="hidden"><div id="hpfill"></div></div>
+<div id="hptext" class="hidden">Корпус: 100</div>
+<div id="hint" class="hidden">ЛКМ — моторы вперёд. Курсор — направление поворота.</div>
+<div id="playerBadge" class="player-badge hidden"></div>
+
+<div id="gameControls" class="hidden">
+  <button class="gc-btn" id="pauseBtn" title="Пауза (Esc)">⏸</button>
+  <button class="gc-btn" id="restartBtn" title="Рестарт">🔄</button>
+  <button class="gc-btn" id="exitBtn" title="Выход на карту">🚪</button>
+</div>
+
+<div id="thrustButton" class="hidden">
+  <button id="thrustBtn" aria-label="Мотор">
+    <svg viewBox="0 0 24 24">
+      <path d="M12 3 L12 15" />
+      <path d="M7 8 L12 3 L17 8" />
+      <path d="M4 21 L20 21" />
+    </svg>
+    <span class="label">МОТОР</span>
+  </button>
+</div>
+
+<div id="mobileControls" class="hidden">
+  <div id="joystickBase">
+    <div id="joystickKnob"></div>
+  </div>
+</div>
+
+<div id="ctrlPanel">
+  <button id="muteBtn" title="Вкл/выкл музыку">🔊</button>
+  <button id="fsBtn" title="Полноэкранный режим (F)">
+    <svg id="fsIconExpand" width="22" height="22" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 9V4h5"/><path d="M20 9V4h-5"/>
+      <path d="M4 15v5h5"/><path d="M20 15v5h-5"/>
+    </svg>
+    <svg id="fsIconCollapse" width="22" height="22" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+         style="display:none;">
+      <path d="M9 4v5H4"/><path d="M15 4v5h5"/>
+      <path d="M9 20v-5H4"/><path d="M15 20v-5h5"/>
+    </svg>
+  </button>
+  <button id="winBtn" title="Открыть в новом окне">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M15 3h6v6"/><path d="M10 14L21 3"/>
+      <path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/>
+    </svg>
+  </button>
+</div>
+
+<div id="serverStatus" class="server-status checking">Сервер: проверка...</div>
+
+<div id="portraitWarning">
+  <div class="content">
+    <div class="rot-icon">📱</div>
+    <h2>Поверните телефон</h2>
+    <p>Игра работает только в горизонтальном положении</p>
+  </div>
+</div>
+
+<!-- ЗАСТАВКА -->
+<div id="screen-splash" class="overlay show">
+  <div class="panel">
+    <div class="version-badge">ВЕРСИЯ 3.1 — «ПОГРУЖЕНИЕ»</div>
+    <h1>ПОГРУЖЕНИЕ</h1>
+    <p style="color:#d4a259; letter-spacing:2px; font-size:14px;">◆ ЗАТОНУВШИЕ ХРАМЫ ◆</p>
+    <div class="story-text">
+      <p><b>2026. Глубина 4 000 метров.</b> После разработки <em>гравитационного щита</em>, позволяющего аппаратам выдерживать давление на любой глубине, экспедиция профессора <b>Соколова</b> отправилась к затонувшим храмам, найденным на дне Тихого океана.</p>
+      <p>Автономный дрон-разведчик <em>«Катран»</em> потерял связь с экспедицией. Вы — пилот. Проведите дрон через <b>пять секторов затопленного комплекса</b> и узнайте, что скрывается на дне.</p>
+      <p style="color:#d4a259;">Для перехода в следующий сектор нужно набрать <b>не менее 80% точности</b>. Берегите корпус и не задевайте глубоководных рыб.</p>
+    </div>
+    <div class="play-btn" id="playBtn" title="Играть">
+      <svg width="52" height="52" viewBox="0 0 24 24" fill="#ffffff">
+        <path d="M8 5v14l11-7z"/>
+      </svg>
+    </div>
+    <p style="font-size:13px; opacity:0.5;">Нажмите ▶ чтобы продолжить</p>
+  </div>
+</div>
+
+<!-- ВЫБОР ИГРОКА -->
+<div id="screen-select" class="overlay">
+  <div class="panel">
+    <h2>Кто играет?</h2>
+    <p style="opacity:0.7; font-size:13px;">Выберите себя из списка или введите свой ник</p>
+
+    <div id="loadingMsg">Загрузка списка учеников...</div>
+
+    <div id="selectContent" class="hidden">
+      <div class="choice-tabs">
+        <button class="choice-tab active" id="tabList" data-mode="list">📋 Выбрать из списка</button>
+        <button class="choice-tab" id="tabNick" data-mode="nick">✏️ Ввести свой ник</button>
+      </div>
+
+      <div class="choice-pane active" id="paneList">
+        <div class="select-block">
+          <label>Класс</label>
+          <select id="classSelect" disabled>
+            <option value="">— загрузка —</option>
+          </select>
+        </div>
+        <div class="select-block">
+          <label>Ученик</label>
+          <select id="studentSelect" disabled>
+            <option value="">— сначала выберите класс —</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="choice-pane" id="paneNick">
+        <div class="select-block">
+          <label>Ник (до 12 символов)</label>
+          <input type="text" id="nickInput" maxlength="12" placeholder="Например: AquaKing" autocomplete="off">
+        </div>
+      </div>
+
+      <div id="selectedPreview" class="selected-preview hidden"></div>
+
+      <div style="margin-top:16px;">
+        <button class="btn gold" id="confirmStudentBtn" disabled>▶ Дальше</button>
+        <button class="btn secondary" id="selectBackBtn">← Назад</button>
+      </div>
+    </div>
+
+    <div id="selectError" class="hidden" style="margin-top:16px;">
+      <p style="color:#ff6b6b;">⚠️ Не удалось загрузить список учеников</p>
+      <p style="font-size:12px; opacity:0.7;">Можно ввести свой ник без списка</p>
+      <button class="btn" id="selectRetryBtn">Повторить загрузку</button>
+      <button class="btn secondary" id="selectBackErrorBtn">← В меню</button>
+    </div>
+  </div>
+</div>
+
+<!-- КАРТА -->
+<div id="screen-map" class="overlay">
+  <div class="panel" style="max-width: 900px; padding: 20px;">
+    <h2 id="mapPlayerInfo" style="font-size: 18px; margin-bottom: 10px;"></h2>
+    <canvas id="mapCanvas" width="860" height="420" style="border: 1px solid #1e3a55; border-radius: 12px; background: #0a1a28; max-width: 100%; height: auto; cursor: pointer;"></canvas>
+    <div id="mapControls" style="margin-top: 14px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
+      <button class="btn secondary" id="mapLeaderboardBtn">🏆 Лидеры</button>
+      <button class="btn secondary" id="mapStoryBtn">📜 История</button>
+      <button class="btn secondary" id="mapControlsBtn">⚙ Управление</button>
+      <button class="btn secondary" id="mapChangePlayerBtn">👤 Сменить игрока</button>
+    </div>
+  </div>
+</div>
+
+<!-- ИСТОРИЯ -->
+<div id="screen-story" class="overlay">
+  <div class="panel">
+    <h2>📜 Предыстория</h2>
+    <div class="story-text">
+      <p>В 2026 году международная научная экспедиция под руководством <b>профессора Соколова</b> совершила прорыв: разработан <em>гравитационный щит</em>, выдерживающий давление на любой глубине. Человечество впервые смогло заглянуть в самые глубокие места планеты.</p>
+      <p>Спутники засекли на дне Тихого океана, на глубине 4 километров, структуры, похожие на <b>древние затопленные храмы</b> неизвестной цивилизации. В самое сердце находки отправлен автономный дрон-разведчик <em>«Катран»</em>.</p>
+      <p>Но на 6-й минуте погружения сигнал оборвался. <b>Вы — пилот дрона.</b> Последний сигнал пришёл из пяти секторов затопленного комплекса.</p>
+      <p style="color:#d4a259;">Для перехода в следующий сектор нужно набрать <b>не менее 80% точности</b> — профессор Соколов не рискует дроном без гарантии, что он справится.</p>
+    </div>
+    <button class="btn" id="storyBack">← Назад</button>
+  </div>
+</div>
+
+<!-- УПРАВЛЕНИЕ -->
+<div id="screen-controls" class="overlay">
+  <div class="panel">
+    <h2>Управление</h2>
+    <div class="controls-list">
+      <div><b>На компьютере:</b></div>
+      <div><b>Левая кнопка мыши (зажать)</b> — включить моторы.</div>
+      <div><b>Курсор мыши</b> — направление поворота.</div>
+      <div><b>Esc</b> — пауза.</div>
+      <div style="margin-top:8px;"><b>На смартфоне:</b></div>
+      <div><b>Стик справа</b> — направление поворота.</div>
+      <div><b>Кнопка МОТОР слева</b> — движение вперёд.</div>
+      <div style="margin-top:8px;"><b>Кнопки вверху справа:</b></div>
+      <div><b>🔊</b> — вкл/выкл музыку и звуки.</div>
+      <div><b>⛶</b> — полноэкранный режим.</div>
+      <div><b>🪟</b> — открыть в новом окне.</div>
+    </div>
+    <button class="btn" id="controlsBack">← Назад</button>
+  </div>
+</div>
+
+<!-- ПАРАМЕТРЫ -->
+<div id="screen-options" class="overlay">
+  <div class="panel">
+    <h2>Параметры</h2>
+    <div class="controls-list">
+      <div><b>Версия игры</b> — <span id="opt-version">3.1</span></div>
+      <div><b>Сервер</b> — <span id="opt-server">—</span></div>
+      <div><b>Музыка</b> — <span id="opt-music">—</span></div>
+      <div><b>Качество графики</b> — 
+        <select id="opt-quality" style="background:#0a1a28;color:#eaf6ff;border:1px solid #1e3a55;border-radius:6px;padding:4px 8px;font-family:inherit;">
+          <option value="low">Низкое (быстро)</option>
+          <option value="medium">Среднее</option>
+          <option value="high">Высокое (красиво)</option>
+        </select>
+      </div>
+      <div><b>Разрешение рендера</b> — 
+        <select id="opt-render" style="background:#0a1a28;color:#eaf6ff;border:1px solid #1e3a55;border-radius:6px;padding:4px 8px;font-family:inherit;">
+          <option value="0.5">0.5 (лёгкое)</option>
+          <option value="0.75" selected>0.75 (среднее)</option>
+          <option value="1">1.0 (полное)</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn" id="optionsBack">← Назад</button>
+  </div>
+</div>
+
+<!-- СТАТИСТИКА -->
+<div id="screen-stats" class="overlay">
+  <div class="panel" style="text-align:left;">
+    <h2 id="result-title" style="text-align:center;">Статистика</h2>
+    <div id="stats"></div>
+    <div id="sendStatus" style="margin-top:12px; text-align:center; font-family:monospace; font-size:13px;"></div>
+    <div style="text-align:center; margin-top:16px;">
+      <button class="btn" id="statsRestart">Пройти заново</button>
+      <button class="btn secondary" id="statsMap">← К карте</button>
+      <button class="btn secondary" id="statsMenu">В меню</button>
+    </div>
+  </div>
+</div>
+
+<!-- ЛИДЕРБОРД -->
+<div id="screen-leaderboard" class="overlay">
+  <div class="panel">
+    <h2>🏆 Топ-10 пилотов</h2>
+    <p style="opacity:0.7; font-size:13px;">По среднеарифметическому всех пройденных уровней</p>
+    <div id="leaderboard-container">
+      <div class="empty-msg">Загрузка...</div>
+    </div>
+    <div style="margin-top:16px;">
+      <button class="btn" id="lbBack">← Назад</button>
+    </div>
+  </div>
+</div>
+
+<!-- ПАУЗА -->
+<div id="pauseOverlay">
+  <div id="pausePanel">
+    <h2>⏸ Пауза</h2>
+    <button class="btn" id="pauseResume">▶ Продолжить</button>
+    <button class="btn secondary" id="pauseRestart">🔄 Рестарт</button>
+    <button class="btn secondary" id="pauseChangePlayer">👤 Сменить игрока</button>
+    <button class="btn danger" id="pauseExit">🚪 На карту</button>
+
+    <div id="soundSettings">
+      <h3>🔊 Звук</h3>
+
+      <div class="slider-row">
+        <label>Музыка</label>
+        <input type="range" id="volMusic" min="0" max="100" value="50">
+        <span class="slider-val" id="valMusic">50</span>
+      </div>
+
+      <div class="slider-row">
+        <label>Мотор</label>
+        <input type="range" id="volMotor" min="0" max="100" value="50">
+        <span class="slider-val" id="valMotor">50</span>
+      </div>
+
+      <div class="slider-row">
+        <label>Удары</label>
+        <input type="range" id="volHits" min="0" max="100" value="60">
+        <span class="slider-val" id="valHits">60</span>
+      </div>
+
+      <div class="slider-row">
+        <label>Эффекты</label>
+        <input type="range" id="volFx" min="0" max="100" value="50">
+        <span class="slider-val" id="valFx">50</span>
+      </div>
+
+      <div class="slider-row">
+        <label>Общая</label>
+        <input type="range" id="volMaster" min="0" max="100" value="100">
+        <span class="slider-val" id="valMaster">100</span>
+      </div>
+
+      <div class="sound-test-btns">
+        <button class="test-btn" id="testMotorBtn">▶ Мотор</button>
+        <button class="test-btn" id="testHitBtn">▶ Удар</button>
+        <button class="test-btn" id="testRingBtn">▶ Кольцо</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ПОДКЛЮЧЕНИЕ СКРИПТОВ -->
+<script src="FIO.js"></script>
+<script src="levels/index.js"></script>
+<script src="levels/level1.js"></script>
+<script src="levels/level2.js"></script>
+<script src="levels/level3.js"></script>
+<script src="levels/level4.js"></script>
+<script src="levels/level5.js"></script>
+
+<script src="js/config.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/player.js"></script>
+<script src="js/map.js"></script>
+<script src="js/render.js"></script>
+<script src="js/leaderboard.js"></script>  
+<script src="js/game.js"></script>
+</body>
+</html>

@@ -192,6 +192,10 @@ el('studentSelect').addEventListener('change', (e) => {
 
 el('confirmStudentBtn').addEventListener('click', async () => {
   if (!currentPlayer) return;
+  
+  // Загружаем артефакты именно этого игрока
+  loadInventoryForPlayer(currentPlayer.klass, currentPlayer.short);
+  
   updatePlayerBadge();
   await loadPlayerProgress();
   showScreen('map');

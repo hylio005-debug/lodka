@@ -5,6 +5,11 @@
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d', { alpha: false });
 
+// Скрытый холст для карты света
+const lightCanvas = document.createElement('canvas');
+const lightCtx = lightCanvas.getContext('2d');
+
+// ... дальше идет function updateZoom() и остальной код
 function updateZoom() {
   zoom = W / getTargetViewWidth();
   zoom = Math.max(0.6, Math.min(zoom, 2.5));
@@ -17,6 +22,12 @@ function resize() {
   H = canvas.height = Math.round(cssH * renderScale);
   canvas.style.width = cssW + 'px';
   canvas.style.height = cssH + 'px';
+
+  // Настраиваем размер скрытого холста для света
+  lightCanvas.width = W;
+  lightCanvas.height = H;
+
+  // Вызываем функцию пересчета зума
   updateZoom();
 }
 window.addEventListener('resize', resize);
@@ -31,11 +42,15 @@ function updateCamera() {
   camera.x = cx; camera.y = cy;
 }
 
-// ---------- Главная отрисовка ----------
+// ================================================================
+//  ГЛАВНАЯ ОТРИСОВКА
+// ================================================================
 function draw() {
+  // 1. Очищаем экран
   ctx.fillStyle = levelBgColor;
   ctx.fillRect(0, 0, W, H);
 
+  // 2. Входим в мировые координаты
   ctx.save();
   ctx.scale(zoom, zoom);
   ctx.translate(-camera.x, -camera.y);
@@ -43,22 +58,15 @@ function draw() {
   const vL = camera.x, vT = camera.y;
   const vR = camera.x + viewW(), vB = camera.y + viewH();
 
+  // 3. Рисуем ВЕСЬ мир (дно, стены, рыб, лодку, пузырьки)
   if (qualityLevel !== 'low') drawLightRays(vL, vT, vR, vB);
   if (qualityLevel !== 'low') drawGrid(vL, vT, vR, vB);
-
   drawSeaFloor(vL, vR);
-// Водоросли
-if (qualityLevel !== 'low') {
-  for (const sw of seaweeds) {
-    if (sw.x < vL - 80 || sw.x > vR + 80) continue;
-    drawSeaweed(sw);
-  }
-}
-  if (levelType === 'rings') {
-    for (let i = 0; i < rings.length; i++) {
-      const r = rings[i];
-      if (r.x < vL - 100 || r.x > vR + 100) continue;
-      drawRing(r, i === currentRingIndex);
+  
+  if (qualityLevel !== 'low') {
+    for (const sw of seaweeds) {
+      if (sw.x < vL - 80 || sw.x > vR + 80) continue;
+      drawSeaweed(sw);
     }
   }
 
@@ -77,18 +85,22 @@ if (qualityLevel !== 'low') {
     drawFish(f);
   }
 
-  if (qualityLevel === 'high') {
-    for (const p of collisionPoints) {
-      if (p.type === 'wall') {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 6 / zoom, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255, 200, 80, 0.55)';
-        ctx.fill();
-      }
+  if (levelType === 'rings') {
+    for (let i = 0; i < rings.length; i++) {
+      const r = rings[i];
+      if (r.x < vL - 100 || r.x > vR + 100) continue;
+      drawRing(r, i === currentRingIndex);
     }
   }
 
-  drawSub();
+  for (const t of torpedoes) {
+    if (t.x < vL - 50 || t.x > vR + 50) continue;
+    drawTorpedo(t);
+  }
+
+  if (winchState !== 'idle') {
+    drawWinch();
+  }
 
   for (const b of ambientBubbles) {
     if (b.x < vL - 20 || b.x > vR + 20) continue;
@@ -100,9 +112,177 @@ if (qualityLevel !== 'low') {
     ctx.fill();
   }
 
+  drawSub();
+
   ctx.restore();
+
+  // 4. Накладываем свет (если уровень темный)
+  if (levelIsDark) {
+    drawDarkness();
+  }
+
+  // 5. Миникарта
+  if (inventory.map && started) {
+    drawMinimap();
+  }
 }
 
+// ================================================================
+//  ТЕМНОТА И ПРОЖЕКТОР (ИСПРАВЛЕННАЯ ВЕРСИЯ)
+// ================================================================
+function drawDarkness() {
+  // 1. Очищаем холст света
+  lightCtx.clearRect(0, 0, W, H);
+  
+  // 2. Заливаем его сплошной ночной темнотой
+  lightCtx.fillStyle = '#05080e'; // Очень темный цвет
+  lightCtx.fillRect(0, 0, W, H);
+  
+  // 3. Включаем режим "screen" (складывание света)
+  lightCtx.globalCompositeOperation = 'screen';
+  
+  // Координаты лодки на экране
+  const sx = (sub.x - camera.x) * zoom;
+  const sy = (sub.y - camera.y) * zoom;
+  
+  // 4. Рисуем ауру вокруг лодки (чтобы видеть под собой)
+  const auraR = 160 * zoom;
+  const auraGrad = lightCtx.createRadialGradient(sx, sy, 0, sx, sy, auraR);
+  auraGrad.addColorStop(0, 'rgba(200, 230, 255, 0.9)'); // Яркий центр
+  auraGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  
+  lightCtx.fillStyle = auraGrad;
+  lightCtx.beginPath();
+  lightCtx.arc(sx, sy, auraR, 0, Math.PI * 2);
+  lightCtx.fill();
+  
+  // 5. Рисуем конус фонарика
+  if (flashlightOn) {
+    const coneLen = 600 * zoom;
+    const coneAngle = 0.5;
+    const dir = sub.angle;
+    
+    const coneGrad = lightCtx.createRadialGradient(sx, sy, 20, sx, sy, coneLen);
+    coneGrad.addColorStop(0, 'rgba(255, 255, 240, 1.0)'); // Бело-желтый
+    coneGrad.addColorStop(0.4, 'rgba(255, 220, 150, 0.8)');
+    coneGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    
+    lightCtx.fillStyle = coneGrad;
+    lightCtx.beginPath();
+    lightCtx.moveTo(sx, sy);
+    lightCtx.arc(sx, sy, coneLen, dir - coneAngle, dir + coneAngle);
+    lightCtx.closePath();
+    lightCtx.fill();
+  }
+  
+  // Сбрасываем режим
+  lightCtx.globalCompositeOperation = 'source-over';
+  
+  // 6. НАКЛАДЫВАЕМ КАРТУ СВЕТА НА ИГРУ
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.drawImage(lightCanvas, 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+// ================================================================
+//  МИНИКАРТА
+// ================================================================
+let minimapCtx = null;
+
+function drawMinimap() {
+  const mCanvas = el('minimapCanvas');
+  if (!mCanvas) return;
+  if (!minimapCtx) minimapCtx = mCanvas.getContext('2d');
+  
+  const mCtx = minimapCtx;
+  const mW = mCanvas.width;
+  const mH = mCanvas.height;
+
+  // Очищаем радар
+  mCtx.fillStyle = 'rgba(10, 26, 40, 0.95)';
+  mCtx.fillRect(0, 0, mW, mH);
+
+  // Настройки отображения (насколько "далеко" видит радар)
+  const viewRange = 500; // Показываем область 1400x1400 вокруг лодки
+  const scale = mW / viewRange;
+
+  mCtx.save();
+  
+  // Центрируем радар на лодке и масштабируем
+  mCtx.translate(mW / 2, mH / 2);
+  mCtx.scale(scale, scale);
+  mCtx.translate(-sub.x, -sub.y);
+
+  // 1. Легкая сетка для ощущения движения
+  mCtx.strokeStyle = 'rgba(30, 58, 85, 0.4)';
+  mCtx.lineWidth = 2 / scale;
+  const gridStep = 200;
+  const startX = Math.floor((sub.x - viewRange) / gridStep) * gridStep;
+  const startY = Math.floor((sub.y - viewRange) / gridStep) * gridStep;
+  
+  for (let x = startX; x < sub.x + viewRange; x += gridStep) {
+    mCtx.beginPath(); mCtx.moveTo(x, sub.y - viewRange); mCtx.lineTo(x, sub.y + viewRange); mCtx.stroke();
+  }
+  for (let y = startY; y < sub.y + viewRange; y += gridStep) {
+    mCtx.beginPath(); mCtx.moveTo(sub.x - viewRange, y); mCtx.lineTo(sub.x + viewRange, y); mCtx.stroke();
+  }
+
+  // 2. Стены (рисуем их потолще для видимости)
+  mCtx.strokeStyle = 'rgba(212, 162, 89, 0.8)';
+  mCtx.lineWidth = 4 / scale;
+  mCtx.lineCap = 'round';
+  for (const w of walls) {
+    mCtx.beginPath();
+    mCtx.moveTo(w.x1, w.y1);
+    mCtx.lineTo(w.x2, w.y2);
+    mCtx.stroke();
+  }
+
+  // 3. Финиш (портал)
+  mCtx.beginPath();
+  mCtx.arc(finish.x, finish.y, finish.r, 0, Math.PI * 2);
+  mCtx.fillStyle = '#ffd166';
+  mCtx.fill();
+
+  // 4. Кольца
+  if (levelType === 'rings') {
+    for (const r of rings) {
+      mCtx.beginPath();
+      mCtx.arc(r.x, r.y, r.r * 0.5, 0, Math.PI * 2);
+      mCtx.strokeStyle = r.passed ? '#6ee787' : 'rgba(255, 220, 130, 0.6)';
+      mCtx.lineWidth = 3 / scale;
+      mCtx.stroke();
+    }
+  }
+
+  // 5. Торпеды
+  mCtx.fillStyle = '#ff6b6b';
+  for (const t of torpedoes) {
+    mCtx.beginPath();
+    mCtx.arc(t.x, t.y, 8 / scale, 0, Math.PI * 2);
+    mCtx.fill();
+  }
+
+  mCtx.restore();
+
+  // 6. Рисуем саму лодку в центре радара (она всегда в центре)
+  mCtx.beginPath();
+  mCtx.arc(mW / 2, mH / 2, 4, 0, Math.PI * 2);
+  mCtx.fillStyle = '#7fd6ff';
+  mCtx.fill();
+
+  // 7. Указатель направления носа лодки
+  mCtx.beginPath();
+  mCtx.moveTo(mW / 2, mH / 2);
+  mCtx.lineTo(mW / 2 + Math.cos(sub.angle) * 12, mH / 2 + Math.sin(sub.angle) * 12);
+  mCtx.strokeStyle = '#ffffff';
+  mCtx.lineWidth = 2;
+  mCtx.stroke();
+}
+
+// ================================================================
+//  ФОНОВЫЕ ЭЛЕМЕНТЫ
+// ================================================================
 function drawGrid(left, top, right, bottom) {
   const gridStep = 100;
   const sX = Math.floor(left / gridStep) * gridStep;
@@ -166,6 +346,7 @@ function drawSeaFloor(left, right) {
     }
   }
 }
+
 function drawSeaweed(sw) {
   const t = sub.animTime;
   const segments = 6;
@@ -188,12 +369,15 @@ function drawSeaweed(sw) {
   }
   ctx.stroke();
 
-  // Листик на верхушке
   ctx.beginPath();
   ctx.ellipse(px, py, sw.width * 0.9, sw.width * 1.5, 0, 0, Math.PI * 2);
   ctx.fillStyle = sw.color;
   ctx.fill();
 }
+
+// ================================================================
+//  СТЕНЫ, КОЛЬЦА, ФИНИШ, ДРОН, РЫБЫ
+// ================================================================
 function drawWall(w) {
   const dx = w.x2 - w.x1, dy = w.y2 - w.y1;
   const len = Math.hypot(dx, dy);
@@ -206,54 +390,40 @@ function drawWall(w) {
   ctx.translate(w.x1, w.y1);
   ctx.rotate(ang);
 
-  // ===== ОСНОВНОЙ ПРЯМОУГОЛЬНИК =====
-  // Ограничиваем кладку так, чтобы линии не выходили за края
+  // Основной прямоугольник
   ctx.save();
   ctx.beginPath();
   ctx.rect(0, -halfT, len, thickness);
-  ctx.clip();   // ← ОБРЕЗАЕМ всё, что выходит за прямоугольник
+  ctx.clip();
 
-  // Фон стены
   ctx.fillStyle = '#6b5437';
   ctx.fillRect(0, -halfT, len, thickness);
 
-  // ===== КЛАДКА МАЙЯ =====
+  // Кладка
   ctx.strokeStyle = 'rgba(30, 18, 8, 0.7)';
   ctx.lineWidth = 1;
   const blockH = 14, blockW = 32;
 
-  // Горизонтальные линии
   for (let y = -halfT + blockH; y < halfT; y += blockH) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(len, y);
-    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(len, y); ctx.stroke();
   }
 
-  // Вертикальные швы (смещённые)
   let bc = 0;
   for (let x = 0; x < len; x += blockW) {
     bc++;
     if (bc % 2 === 0) continue;
     for (let y = -halfT; y < halfT; y += blockH) {
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x, y + blockH);
-      ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + blockH); ctx.stroke();
     }
   }
 
-  // Второй ряд вертикальных швов со смещением
   for (let x = blockW; x < len; x += blockW) {
     for (let y = -halfT + blockH; y < halfT - blockH; y += blockH * 2) {
-      ctx.beginPath();
-      ctx.moveTo(x, y + blockH * 0.5);
-      ctx.lineTo(x, y + blockH * 1.5);
-      ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x, y + blockH * 0.5); ctx.lineTo(x, y + blockH * 1.5); ctx.stroke();
     }
   }
 
-  // ===== ИЕРОГЛИФЫ МАЙЯ =====
+  // Иероглифы
   if (len > 80) {
     const step = 70;
     for (let x = step * 0.6; x < len - step * 0.6; x += step) {
@@ -262,7 +432,7 @@ function drawWall(w) {
     }
   }
 
-  // ===== МОХ =====
+  // Мох
   ctx.strokeStyle = 'rgba(40, 80, 50, 0.55)';
   ctx.lineWidth = 1.5;
   for (let x = 0; x < len; x += 40) {
@@ -282,7 +452,7 @@ function drawWall(w) {
     }
   }
 
-  // ===== ТРЕЩИНЫ =====
+  // Трещины
   ctx.strokeStyle = 'rgba(20, 10, 0, 0.6)';
   ctx.lineWidth = 1;
   for (let x = 20; x < len; x += 90) {
@@ -299,49 +469,46 @@ function drawWall(w) {
     }
   }
 
-  // Верхняя светлая полоса
+  // Полосы
   ctx.fillStyle = 'rgba(255, 220, 150, 0.15)';
   ctx.fillRect(0, -halfT, len, 3);
-
-  // Нижняя тёмная полоса
   ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
   ctx.fillRect(0, halfT - 3, len, 3);
 
-  ctx.restore();   // ← ВЫХОДИМ ИЗ CLIP
+  ctx.restore(); // Выход из клипа
 
-  // ===== КРУГЛЫЕ ТОРЦЫ СТЕНЫ =====
-  // Левый торец
-  ctx.beginPath();
-  ctx.arc(0, 0, halfT, 0, Math.PI * 2);
-  ctx.fillStyle = '#6b5437';
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(30, 18, 8, 0.7)';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  // Правый торец
-  ctx.beginPath();
-  ctx.arc(len, 0, halfT, 0, Math.PI * 2);
-  ctx.fillStyle = '#6b5437';
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(30, 18, 8, 0.7)';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  // ===== ДЕКОРАТИВНЫЕ КОЛЬЦА НА ТОРЦАХ =====
-  // (чтобы торцы выглядели как часть кладки)
-  ctx.strokeStyle = 'rgba(255, 220, 150, 0.3)';
-  ctx.lineWidth = 1.5;
-
-  ctx.beginPath();
-  ctx.arc(0, 0, halfT * 0.6, 0, Math.PI * 2);
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.arc(len, 0, halfT * 0.6, 0, Math.PI * 2);
-  ctx.stroke();
+  // Круглые торцы
+  drawWallCap(0, 0, halfT);
+  drawWallCap(len, 0, halfT);
 
   ctx.restore();
+}
+
+function drawWallCap(x, y, halfT) {
+  ctx.beginPath();
+  ctx.arc(x, y, halfT, 0, Math.PI * 2);
+  ctx.fillStyle = '#6b5437';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(30, 18, 8, 0.7)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(x, y, halfT * 0.65, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255, 220, 150, 0.4)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(x, y, halfT * 0.3, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255, 220, 150, 0.35)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(x, y, halfT * 0.12, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(60, 30, 15, 0.6)';
+  ctx.fill();
 }
 
 function drawRing(r, isCurrent) {
@@ -667,17 +834,88 @@ function drawAnglerFish(f) {
 
   ctx.restore();
 }
+
+// ================================================================
+//  НОВЫЕ ЭЛЕМЕНТЫ (Торпеды и Лебедка)
+// ================================================================
+function drawTorpedo(t) {
+  ctx.save();
+  ctx.translate(t.x, t.y);
+  ctx.rotate(t.angle);
+  
+  ctx.beginPath();
+  ctx.moveTo(10, 0);
+  ctx.lineTo(-6, -4);
+  ctx.lineTo(-6, 4);
+  ctx.closePath();
+  ctx.fillStyle = '#ff6b6b';
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  
+  ctx.beginPath();
+  ctx.moveTo(-6, -2);
+  ctx.lineTo(-14 - Math.random() * 4, 0);
+  ctx.lineTo(-6, 2);
+  ctx.fillStyle = 'rgba(255, 200, 100, 0.8)';
+  ctx.fill();
+  
+  ctx.restore();
+}
+
+function drawWinch() {
+  const hx = winchHook.x;
+  const hy = winchHook.y;
+  
+  ctx.beginPath();
+  ctx.moveTo(sub.x, sub.y);
+  ctx.lineTo(hx, hy);
+  ctx.strokeStyle = 'rgba(160, 200, 220, 0.8)';
+  ctx.lineWidth = 2 / zoom;
+  ctx.setLineDash([4 / zoom, 4 / zoom]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  
+  if (winchState === 'shooting') {
+    ctx.save();
+    ctx.translate(hx, hy);
+    ctx.rotate(sub.angle);
+    ctx.beginPath();
+    ctx.moveTo(10 / zoom, 0);
+    ctx.lineTo(-5 / zoom, -3 / zoom);
+    ctx.lineTo(-5 / zoom, 3 / zoom);
+    ctx.closePath();
+    ctx.fillStyle = '#eaf6ff';
+    ctx.fill();
+    ctx.restore();
+  } else if (winchState === 'pulling') {
+    ctx.beginPath();
+    ctx.arc(hx, hy, 15 / zoom, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 220, 130, 0.4)';
+    ctx.fill();
+    ctx.strokeStyle = '#ffd166';
+    ctx.lineWidth = 2 / zoom;
+    ctx.stroke();
+    
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(hx, hy);
+      ctx.lineTo(hx + Math.cos(a) * 15 / zoom, hy + Math.sin(a) * 15 / zoom);
+      ctx.stroke();
+    }
+  }
+}
+
 // ================================================================
 //  ПРОЦЕДУРНЫЕ ЭЛЕМЕНТЫ ДЛЯ СТЕН МАЙЯ
 // ================================================================
-
-// Детерминированный шум по координате
 function hashNoise(x, y, seed) {
   const n = Math.sin(x * 12.9898 + y * 78.233 + (seed || 0) * 43.1) * 43758.5453;
   return n - Math.floor(n);
 }
 
-// Иероглиф майя
 function drawMayanGlyphToCtx(c, x, y, size, seed) {
   const r1 = hashNoise(x, y, seed);
   const r2 = hashNoise(x + 100, y + 50, seed);
@@ -687,50 +925,27 @@ function drawMayanGlyphToCtx(c, x, y, size, seed) {
   c.fillStyle = 'rgba(60, 30, 15, 0.45)';
   c.lineWidth = 1.2;
 
-  // Рамка
   c.strokeRect(x - size * 0.35, y - size * 0.35, size * 0.7, size * 0.7);
 
-  // Узор внутри (4 варианта)
   const pattern = Math.floor(r1 * 4);
 
   if (pattern === 0) {
-    // Точка + линия
-    c.beginPath();
-    c.arc(x, y, size * 0.08, 0, Math.PI * 2);
-    c.fill();
-    c.beginPath();
-    c.moveTo(x - size * 0.25, y + size * 0.15);
-    c.lineTo(x + size * 0.25, y + size * 0.15);
-    c.stroke();
+    c.beginPath(); c.arc(x, y, size * 0.08, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.moveTo(x - size * 0.25, y + size * 0.15); c.lineTo(x + size * 0.25, y + size * 0.15); c.stroke();
   } else if (pattern === 1) {
-    // Крест
-    c.beginPath();
-    c.moveTo(x - size * 0.25, y);
-    c.lineTo(x + size * 0.25, y);
-    c.moveTo(x, y - size * 0.25);
-    c.lineTo(x, y + size * 0.25);
-    c.stroke();
+    c.beginPath(); c.moveTo(x - size * 0.25, y); c.lineTo(x + size * 0.25, y);
+    c.moveTo(x, y - size * 0.25); c.lineTo(x, y + size * 0.25); c.stroke();
   } else if (pattern === 2) {
-    // Спираль
-    c.beginPath();
-    c.arc(x, y, size * 0.2, 0, Math.PI * 1.4);
-    c.stroke();
-    c.beginPath();
-    c.arc(x + size * 0.05, y + size * 0.05, size * 0.08, 0, Math.PI * 2);
-    c.stroke();
+    c.beginPath(); c.arc(x, y, size * 0.2, 0, Math.PI * 1.4); c.stroke();
+    c.beginPath(); c.arc(x + size * 0.05, y + size * 0.05, size * 0.08, 0, Math.PI * 2); c.stroke();
   } else {
-    // Три полосы
     c.beginPath();
-    c.moveTo(x - size * 0.18, y - size * 0.2);
-    c.lineTo(x - size * 0.18, y + size * 0.2);
-    c.moveTo(x, y - size * 0.2);
-    c.lineTo(x, y + size * 0.2);
-    c.moveTo(x + size * 0.18, y - size * 0.2);
-    c.lineTo(x + size * 0.18, y + size * 0.2);
+    c.moveTo(x - size * 0.18, y - size * 0.2); c.lineTo(x - size * 0.18, y + size * 0.2);
+    c.moveTo(x, y - size * 0.2); c.lineTo(x, y + size * 0.2);
+    c.moveTo(x + size * 0.18, y - size * 0.2); c.lineTo(x + size * 0.18, y + size * 0.2);
     c.stroke();
   }
 
-  // Дополнительная точка
   if (r2 > 0.6) {
     c.beginPath();
     c.arc(x + (r3 - 0.5) * size * 0.3, y + (r2 - 0.5) * size * 0.3, size * 0.05, 0, Math.PI * 2);

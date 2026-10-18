@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Современное 2D Освещение на JS</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #0b0b0f;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: sans-serif;
+        }
+        canvas {
+            border: 2px solid #222;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.9);
+            background-color: #111;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas" width="800" height="500"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Создаем СЛУЖЕБНЫЙ (скрытый) холст для расчета света в памяти
+        const lightCanvas = document.createElement('canvas');
+        lightCanvas.width = canvas.width;
+        lightCanvas.height = canvas.height;
+        const lightCtx = lightCanvas.getContext('2d');
+
+        // Координаты игрока (источник света)
+        const player = { x: 400, y: 250, radius: 15 };
+        
+        // Координаты мыши
+        let mouse = { x: 500, y: 250 };
+
+        // Спрятанные объекты (игровой мир)
+        const items = [];
+        const colors = ['#e74c3c', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6'];
+        for (let i = 0; i < 20; i++) {
+            items.push({
+                x: Math.random() * (canvas.width - 40) + 20,
+                y: Math.random() * (canvas.height - 40) + 20,
+                size: 25,
+                color: colors[Math.floor(Math.random() * colors.length)]
+            });
+        }
+
+        // Отслеживание мыши
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouse.x = e.clientX - rect.left;
+            mouse.y = e.clientY - rect.top;
+        });
+
+        function updateAndRender() {
+            // ----------------------------------------------------
+            // ШАГ 1: РИСУЕМ ОБЫЧНЫЙ ИГРОВОЙ МИР (БЕЗ ТЕМНОТЫ)
+            // ----------------------------------------------------
+            ctx.fillStyle = '#22222b'; // Цвет пола
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Рисуем сетку пола для текстурности
+            ctx.strokeStyle = '#2c2c35';
+            ctx.lineWidth = 1;
+            for(let i=0; i<canvas.width; i+=40) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,canvas.height); ctx.stroke(); }
+            for(let i=0; i<canvas.height; i+=40) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(canvas.width,i); ctx.stroke(); }
+
+            // Рисуем цветные кубы
+            items.forEach(item => {
+                ctx.fillStyle = item.color;
+                ctx.fillRect(item.x, item.y, item.size, item.size);
+            });
+
+            // Рисуем игрока
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // ----------------------------------------------------
+            // ШАГ 2: СТРОИМ КАРТУ СВЕТА НА СКРЫТОМ ХОЛСТЕ
+            // ----------------------------------------------------
+            // Заливаем скрытый холст сплошной ночной темнотой
+            lightCtx.fillStyle = '#090912'; // Глубина темноты окружающей среды
+            lightCtx.fillRect(0, 0, lightCanvas.width, lightCanvas.height);
+
+            // Включаем режим складывания цветов ("screen" или "lighter")
+            // Он позволяет разным источникам света красиво сливаться друг с другом
+            lightCtx.globalCompositeOperation = 'screen'; 
+
+            // Считаем угол направления фонарика от игрока на мышь
+            const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
+            const coneAngle = 0.4; // Ширина луча
+            const lightDistance = 380; // Дальность фонарика
+
+            // Рисуем НАПРАВЛЕННЫЙ ЛУЧ ФОНАРИКА с мягким радиальным градиентом
+            const coneGrad = lightCtx.createRadialGradient(player.x, player.y, 0, player.x, player.y, lightDistance);
+            coneGrad.addColorStop(0, 'rgba(255, 255, 240, 1.0)'); // Бело-желтый свет в начале
+            coneGrad.addColorStop(0.3, 'rgba(255, 255, 240, 0.6)');
+            coneGrad.addColorStop(1, 'rgba(0, 0, 0, 0.0)');       // Угасание в ноль
+
+            lightCtx.fillStyle = coneGrad;
+            lightCtx.beginPath();
+            lightCtx.moveTo(player.x, player.y);
+            lightCtx.arc(player.x, player.y, lightDistance, angle - coneAngle, angle + coneAngle);
+            lightCtx.lineTo(player.x, player.y);
+            lightCtx.fill();
+
+            // Добавляем АУРУ вокруг игрока (чтобы он видел, что у него под ногами)
+            const auraGrad = lightCtx.createRadialGradient(player.x, player.y, 0, player.x, player.y, 60);
+            auraGrad.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+            auraGrad.addColorStop(1, 'rgba(0, 0, 0, 0.0)');
+            lightCtx.fillStyle = auraGrad;
+            lightCtx.beginPath();
+            lightCtx.arc(player.x, player.y, 60, 0, Math.PI * 2);
+            lightCtx.fill();
+
+            // Сбрасываем режим смешивания скрытого холста
+            lightCtx.globalCompositeOperation = 'source-over';
+
+            // ----------------------------------------------------
+            // ШАГ 3: НАКЛАДЫВАЕМ КАРТУ СВЕТА НА ОСНОВНУЮ ИГРУ
+            // ----------------------------------------------------
+            // Режим 'multiply' перемножает пиксели игры и пиксели света.
+            // Черные зоны маски сделают игру черной, белые — оставят исходные цвета.
+            ctx.globalCompositeOperation = 'multiply';
+            ctx.drawImage(lightCanvas, 0, 0);
+
+            // Возвращаем дефолтный режим для следующего кадра
+            ctx.globalCompositeOperation = 'source-over';
+
+            requestAnimationFrame(updateAndRender);
+        }
+
+        // Запуск
+        updateAndRender();
+    </script>
+</body>
+</html>
