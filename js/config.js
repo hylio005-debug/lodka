@@ -1,9 +1,9 @@
 // ================================================================
 //  js/config.js — КОНСТАНТЫ И НАСТРОЙКИ
-//  Игра «Погружение» v3.3
+//  Игра «Погружение» v4.1
 // ================================================================
 
-const GAME_VERSION = '3.3';
+const GAME_VERSION = '4.1';
 const SERVER_URL = 'https://lodka777.online/api.php';
 
 const UNLOCK_THRESHOLD = 80;
@@ -133,6 +133,23 @@ let torpedoes = [];
 let torpedoCooldown = 0;
 const TORPEDO_COOLDOWN_MAX = 2.0; // 2 секунды
 const TORPEDO_SPEED = 400;
+
+// ---------- КРАКЕН (БОСС 5-го УРОВНЯ) ----------
+let krakenActive = false;
+let krakenDefeated = false;
+let krakenHp = 300;
+let krakenMaxHp = 300;
+let krakenPhase = 1;
+let krakenAttackTimer = 0;
+let krakenInkTimer = 0;
+let krakenDamageFlash = 0;
+let krakenFlashType = 'ice';
+let krakenSinkT = 0;
+let tentacleWarnings = [];
+let krakenPos = { x: 2900, y: 550, r: 90 };
+let tentacles = [];
+let inkClouds = [];
+
 
 // ---------- АУДИО ----------
 let audioCtx = null;

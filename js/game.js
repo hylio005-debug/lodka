@@ -233,7 +233,7 @@ function updateWorldFromLevel(data) {
   if (data.fallBlend) sub.fallBlend = data.fallBlend;
 
   fishes.length = 0;
-  (data.fishes || []).forEach(f => {
+    (data.fishes || []).forEach(f => {
     fishes.push({
       x: f.x, y: f.y, r: f.r || 14,
       vx: f.vx || 30, vy: f.vy || 15,
@@ -242,7 +242,8 @@ function updateWorldFromLevel(data) {
       dir: f.vx >= 0 ? 1 : -1,
       tailPhase: Math.random() * Math.PI * 2,
       anglerPhase: Math.random() * Math.PI * 2,
-      mouthPhase: Math.random() * Math.PI * 2
+      mouthPhase: Math.random() * Math.PI * 2,
+      frozen: 0
     });
   });
 
@@ -270,15 +271,47 @@ function updateWorldFromLevel(data) {
 
 // ---------- Механики артефактов ----------
 function fireWinch() {
-  winchState = 'shooting';
-  winchHook.x = sub.x;
-  winchHook.y = sub.y;
   const fx = Math.cos(sub.angle);
   const fy = Math.sin(sub.angle);
-  winchHook.targetX = sub.x + fx * 300;
-  winchHook.targetY = sub.y + fy * 300;
+  const rawX = sub.x + fx * 300;
+  const rawY = sub.y + fy * 300;
+
+  let targetX = rawX;
+  let targetY = rawY;
+  let hitBoss = false;
+
+  // Ищем стену и Кракена по пути
+  const wallHit = raycastWall(sub.x, sub.y, rawX, rawY, 5);
+  let bossHit = null;
+  if (currentLevelData && currentLevelData.boss === 'kraken' && !krakenDefeated) {
+    bossHit = raycastBoss(sub.x, sub.y, rawX, rawY, krakenPos);
+  }
+
+  // Берём то, что ближе
+  const wallT = wallHit ? wallHit.t : Infinity;
+  const bossT = bossHit ? bossHit.t : Infinity;
+
+  if (bossT < wallT) {
+    targetX = bossHit.x;
+    targetY = bossHit.y;
+    hitBoss = true;
+  } else if (wallHit) {
+    // Ставим крюк чуть перед стеной
+    targetX = wallHit.x - fx * 6;
+    targetY = wallHit.y - fy * 6;
+  }
+
+  winchState = 'shooting';
+  winchHook.originX = sub.x;
+  winchHook.originY = sub.y;
+  winchHook.x = sub.x;
+  winchHook.y = sub.y;
+  winchHook.targetX = targetX;
+  winchHook.targetY = targetY;
+  winchHook.hitBoss = hitBoss;
+  winchHook.pullTime = 0;
   winchHook.t = 0;
-  soundRing(); // Звук выстрела
+  soundRing();
 }
 
 function toggleFlashlight() {
@@ -298,11 +331,11 @@ function fireTorpedo() {
     y: sub.y + fy * 20,
     vx: fx * TORPEDO_SPEED,
     vy: fy * TORPEDO_SPEED,
-    life: 2.0, // Живет 2 секунды
+    life: 2.0,
     angle: sub.angle
   });
   torpedoCooldown = TORPEDO_COOLDOWN_MAX;
-  soundFishHit();
+  soundRing();
 }
 
 // ---------- Запуск уровня ----------
@@ -361,6 +394,29 @@ function prepareRun() {
   currentRingIndex = 0;
   missedRingWarning = false;
   finishBlockedWarning = false;
+  sub.inkBlind = 0;
+
+  krakenActive = false;
+  krakenDefeated = false;
+  krakenHp = 300;
+  krakenMaxHp = 300;
+  krakenPhase = 1;
+  krakenAttackTimer = 0;
+  krakenInkTimer = 0;
+  krakenDamageFlash = 0;
+  krakenFlashType = 'ice';
+  krakenSinkT = 0;
+  if (currentLevelData && currentLevelData.bossPos) {
+    krakenPos = { ...currentLevelData.bossPos };
+  } else {
+    krakenPos = { x: 2900, y: 550, r: 90 };
+  }
+  tentacles = [];
+  inkClouds = [];
+  tentacleWarnings = [];
+  sub.tentacleInvuln = 0;
+  const bb = el('bossbar');
+  if (bb) bb.classList.add('hidden');
 
   ambientBubbles.length = 0;
   generateDecorations();
@@ -477,6 +533,14 @@ function update(dt) {
   // Таймеры артефактов
   if (winchCooldown > 0) winchCooldown -= dt;
   if (torpedoCooldown > 0) torpedoCooldown -= dt;
+  if (sub.inkBlind > 0) {
+    sub.inkBlind -= dt;
+    if (sub.inkBlind < 0) sub.inkBlind = 0;
+  }
+  if (sub.tentacleInvuln > 0) {
+    sub.tentacleInvuln -= dt;
+    if (sub.tentacleInvuln < 0) sub.tentacleInvuln = 0;
+  }
 
   // Прожектор
   if (flashlightOn) {
@@ -500,7 +564,10 @@ function update(dt) {
     const dxm = mouse.x - sub.x, dym = mouse.y - sub.y;
     if (Math.hypot(dxm, dym) > 30) targetAngle = Math.atan2(dym, dxm);
   }
-
+  // Чернила: дрейф прицела
+  if (targetAngle !== null && sub.inkBlind > 0) {
+    targetAngle += (Math.random() - 0.5) * 0.5;
+  }
   if (targetAngle !== null) {
     let diff = normAngle(targetAngle - sub.angle);
     const maxStep = sub.maxAngVel * dt;
@@ -516,17 +583,17 @@ function update(dt) {
   const thrustOn = isTouch ? thrust.pressed : mouse.down;
   
   if (winchState === 'pulling') {
-    // Притягиваемся к крюку
+    winchHook.pullTime = (winchHook.pullTime || 0) + dt;
     const dx = winchHook.x - sub.x;
     const dy = winchHook.y - sub.y;
     const dist = Math.hypot(dx, dy);
-    
-    if (dist < 10) {
+
+    if (dist < 12 || winchHook.pullTime > 1.0) {
       winchState = 'idle';
       winchCooldown = WINCH_COOLDOWN_MAX;
       sub.vx = 0; sub.vy = 0;
     } else {
-      const pullSpeed = 600; // Скорость притяжения
+      const pullSpeed = 600;
       sub.vx = (dx / dist) * pullSpeed;
       sub.vy = (dy / dist) * pullSpeed;
     }
@@ -550,35 +617,43 @@ function update(dt) {
   sub.y += sub.vy * dt;
 
   // Логика выстрела копья
+   // Логика выстрела лебедки
   if (winchState === 'shooting') {
     winchHook.t += dt;
-    // Достиг ли цели или стены
-    let hitWall = false;
-    for (const w of walls) {
-      if (circleVsSegment(winchHook.targetX, winchHook.targetY, 5, w.x1, w.y1, w.x2, w.y2).hit) {
-        hitWall = true; break;
-      }
-    }
-    
-    if (winchHook.t > 0.2 || hitWall) {
-      if (hitWall) {
-        // Отскочило от стены
-        winchHook.targetX = winchHook.x + Math.cos(sub.angle) * 100;
-        winchHook.targetY = winchHook.y + Math.sin(sub.angle) * 100;
-      }
+
+    if (winchHook.t >= 0.2) {
+      // Крюк долетел
       winchHook.x = winchHook.targetX;
       winchHook.y = winchHook.targetY;
-      winchState = 'pulling';
+
+      if (winchHook.hitBoss) {
+        // Попадание в Кракена: урон + отбрасывание дрона
+        krakenHp = Math.max(0, krakenHp - 15);
+        krakenDamageFlash = 0.3;
+        krakenFlashType = 'physical';
+        if (!krakenActive) {
+          krakenActive = true;
+          showToast('🐙 КРАКЕН ПРОБУДИЛСЯ!');
+              playBossMusic();
+        }
+        const d = Math.hypot(sub.x - krakenPos.x, sub.y - krakenPos.y) || 1;
+        sub.vx = (sub.x - krakenPos.x) / d * 250;
+        sub.vy = (sub.y - krakenPos.y) / d * 250;
+        winchState = 'idle';
+        winchCooldown = WINCH_COOLDOWN_MAX;
+      } else {
+        winchState = 'pulling';
+        winchHook.pullTime = 0;
+      }
     } else {
-      // Летит
-      const px = sub.x + Math.cos(sub.angle) * 300;
-      const py = sub.y + Math.sin(sub.angle) * 300;
-      winchHook.x = sub.x + (px - sub.x) * (winchHook.t / 0.2);
-      winchHook.y = sub.y + (py - sub.y) * (winchHook.t / 0.2);
+      // Летит — интерполируем от точки выстрела к цели
+      const k = winchHook.t / 0.2;
+      winchHook.x = winchHook.originX + (winchHook.targetX - winchHook.originX) * k;
+      winchHook.y = winchHook.originY + (winchHook.targetY - winchHook.originY) * k;
     }
   }
-
   // Логика торпед
+  // Логика торпед — заморозка рыб
   for (let i = torpedoes.length - 1; i >= 0; i--) {
     const t = torpedoes[i];
     t.x += t.vx * dt;
@@ -586,19 +661,36 @@ function update(dt) {
     t.life -= dt;
     
     let hitSomething = false;
-    // Стены
     for (const w of walls) {
       if (circleVsSegment(t.x, t.y, 4, w.x1, w.y1, w.x2, w.y2).hit) { hitSomething = true; break; }
     }
-    // Рыбы
     if (!hitSomething) {
       for (let j = fishes.length - 1; j >= 0; j--) {
         const f = fishes[j];
+        if (f.frozen > 0) continue;
         const dx = f.x - t.x, dy = f.y - t.y;
         if (dx*dx + dy*dy < (f.r + 10)*(f.r + 10)) {
-          fishes.splice(j, 1); // Убиваем рыбу
+          f.frozen = 5.0;
           hitSomething = true;
+          soundFishHit();
           break;
+        }
+      }
+    }
+    // Попадание в Кракена
+    if (!hitSomething && currentLevelData && currentLevelData.boss === 'kraken' && !krakenDefeated) {
+      const kdx = t.x - krakenPos.x;
+      const kdy = t.y - krakenPos.y;
+      if (kdx*kdx + kdy*kdy < krakenPos.r * krakenPos.r) {
+        krakenHp = Math.max(0, krakenHp - 25);
+        krakenDamageFlash = 0.3;
+        krakenFlashType = 'ice';
+        hitSomething = true;
+        soundRing();
+        if (!krakenActive) {
+          krakenActive = true;
+          showToast('🐙 КРАКЕН ПРОБУДИЛСЯ!');
+              playBossMusic();
         }
       }
     }
@@ -668,7 +760,22 @@ function update(dt) {
   }
 
   // Рыбы (движение и коллизия)
+  // Рыбы (движение и коллизия)
   for (const f of fishes) {
+    if (f.frozen > 0) {
+      f.frozen -= dt;
+
+      const dx = f.x - sub.x, dy = f.y - sub.y;
+      const rr = f.r + sub.r;
+      if (dx*dx + dy*dy < rr*rr) {
+        const d = Math.hypot(dx, dy) || 1;
+        const nx = -dx / d, ny = -dy / d;
+        sub.x += nx * 2; sub.y += ny * 2;
+        sub.vx += nx * 30; sub.vy += ny * 30;
+      }
+      continue;
+    }
+
     f.wiggle += dt * 1.5;
     f.tailPhase += dt * 6;
     f.anglerPhase += dt * 2;
@@ -741,7 +848,8 @@ function update(dt) {
       sub.vy += uy * 40;
     }
   }
-
+  updateKraken(dt);
+  if (!running) return;
   updateAmbientBubbles(dt);
   if (sub.invuln > 0) sub.invuln -= dt;
 
@@ -754,6 +862,12 @@ function update(dt) {
       if (!finishBlockedWarning) {
         finishBlockedWarning = true;
         showToast('🔒 Не собраны все кольца (' + ringsCollected + '/' + ringsRequired + ')');
+        setTimeout(() => { finishBlockedWarning = false; }, 2500);
+      }
+    } else if (currentLevelData && currentLevelData.boss === 'kraken' && !krakenDefeated) {
+      if (!finishBlockedWarning) {
+        finishBlockedWarning = true;
+        showToast('🐙 Сначала победите Кракена!');
         setTimeout(() => { finishBlockedWarning = false; }, 2500);
       }
     } else {
@@ -840,14 +954,14 @@ async function showStats(title) {
       1: { key: 'map', icon: '🗺', name: 'Древняя Карта', desc: 'Теперь вы видите схему подводных залов. На экране появится миникарта.' },
       2: { key: 'winch', icon: '⚙', name: 'Лебедка', desc: 'Позволяет делать быстрый рывок (ПКМ / кнопка).' },
       3: { key: 'flashlight', icon: '💡', name: 'Прожектор', desc: 'Освещает темноту (СКМ / F). Тратит энергию.' },
-      4: { key: 'torpedo', icon: '🚀', name: 'Ракетомет', desc: 'Стреляет торпедами (Пробел / кнопка).' }
+      4: { key: 'torpedo', icon: '❄️', name: 'Крио-бластер', desc: 'Замораживает рыб ледяными снарядами (Пробел / кнопка).' }
     };
 
     const art = artifactData[currentLevel];
     if (art && !inventory[art.key]) {
       // Выдаем артефакт
       inventory[art.key] = true;
-      if (currentPlayer) {
+      if (currentPlayer && currentPlayer.source !== 'nick') {
         saveInventoryForPlayer(currentPlayer.klass, currentPlayer.short);
       }
 
@@ -867,7 +981,6 @@ async function showStats(title) {
   if (run.resultState === 'win' && accuracy < UNLOCK_THRESHOLD) {
     // Провал по точности
     const failContainer = el('fail-stats-container');
-    // На экране провала артефакты не показываем (так как они не выдаются)
     if (failContainer) failContainer.innerHTML = html;
     showScreen('fail');
   } else {
@@ -878,15 +991,21 @@ async function showStats(title) {
     showScreen('stats');
   }
 
-  // 4. Отправка результата
+  // 4. Отправка результата (Уровень + Артефакты В ОДНОМ ЗАПРОСЕ)
   if (!scoreSent && currentPlayer && run.resultState === 'win') {
     scoreSent = true;
     const result = await sendResult(currentLevel, accuracy);
-    if (result.ok) {
-      const s = el('sendStatus'); if (s) { s.textContent = '✅ Результат отправлен в таблицу'; s.style.color = '#6ee787'; }
-    } else {
-      const s = el('sendStatus'); if (s) { s.textContent = '⚠️ Нет связи с таблицей'; s.style.color = '#ff6b6b'; }
+    const s = el('sendStatus');
+    if (s) {
+      if (result.ok) {
+        s.textContent = '✅ Результат и артефакты сохранены';
+        s.style.color = '#6ee787';
+      } else {
+        s.textContent = '⚠️ ' + (result.error || 'Нет связи');
+        s.style.color = '#ff6b6b';
+      }
     }
+    if (!result.ok) console.error('❌ Отправка не удалась:', result.error);
   }
 
   // 5. Обновляем прогресс
@@ -1163,6 +1282,249 @@ resize();
 updateCamera();
 showScreen('splash');
 lastTime = performance.now();
+// ================================================================
+//  🐙 КРАКЕН — ЛОГИКА БОЯ
+// ================================================================
+function updateKraken(dt) {
+  if (!currentLevelData || currentLevelData.boss !== 'kraken') return;
+
+  if (krakenDefeated) {
+    if (krakenSinkT < 1) {
+      krakenSinkT = Math.min(1, krakenSinkT + dt / 3);
+    }
+    updateBossBar();
+    return;
+  }
+
+  // Триггер боя
+  if (!krakenActive && sub.x > (currentLevelData.bossTriggerX || 2400)) {
+    krakenActive = true;
+    showToast('🐙 КРАКЕН ПРОБУДИЛСЯ!');
+        playBossMusic();
+  }
+
+  if (!krakenActive) return;
+
+  krakenPhase = krakenHp > 200 ? 1 : (krakenHp > 100 ? 2 : 3);
+  if (krakenDamageFlash > 0) krakenDamageFlash -= dt;
+
+  // Атаки щупальцами
+  // Атаки щупальцами — всегда 1 за атаку
+  // Атаки щупальцами — 1 за атаку, с паузами
+  krakenAttackTimer -= dt;
+  if (krakenAttackTimer <= 0) {
+    // Базовая пауза по фазам
+    const baseInterval = krakenPhase === 1 ? 5.5 : (krakenPhase === 2 ? 4.5 : 3.5);
+    // ±20% рандома — чтобы не было «метронома»
+    const jitter = baseInterval * (0.8 + Math.random() * 0.4);
+    krakenAttackTimer = jitter;
+    spawnTentacle();
+  }
+
+  // Чернила (фаза 2+)
+  if (krakenPhase >= 2) {
+    krakenInkTimer -= dt;
+    if (krakenInkTimer <= 0) {
+      krakenInkTimer = krakenPhase === 2 ? 6 : 4;
+      spawnInkCloud();
+    }
+  }
+
+    // Предупреждения перед появлением щупальца
+  for (let i = tentacleWarnings.length - 1; i >= 0; i--) {
+    const w = tentacleWarnings[i];
+    w.life += dt;
+    if (w.life >= w.delay) {
+      spawnTentacleActual(w.x);
+      tentacleWarnings.splice(i, 1);
+    }
+  }
+  // Обновление щупалец
+   // Обновление щупалец — коллизия + отдельный кулдаун
+  for (let i = tentacles.length - 1; i >= 0; i--) {
+    const t = tentacles[i];
+    t.life += dt;
+    if (t.life < 0.5) {
+      t.height = (t.life / 0.5) * t.maxHeight;
+    } else if (t.life < 1.5) {
+      t.height = t.maxHeight;
+    } else if (t.life < 2.0) {
+      t.height = t.maxHeight * (1 - (t.life - 1.5) / 0.5);
+    } else {
+      tentacles.splice(i, 1);
+      continue;
+    }
+
+    if (t.height <= 20) continue;
+
+    // Физическая коллизия ВСЕГДА (даже в неуязвимости) — как стена
+    const res = circleVsSegment(
+      sub.x, sub.y, sub.r,
+      t.x, t.baseY,
+      t.x, t.baseY - t.height
+    );
+    if (res.hit) {
+      sub.x += res.nx * res.depth;
+      sub.y += res.ny * res.depth;
+      const vn = sub.vx * res.nx + sub.vy * res.ny;
+      if (vn < 0) {
+        sub.vx -= vn * res.nx * 1.5;
+        sub.vy -= vn * res.ny * 1.5;
+      }
+    }
+
+    // Урон — только если ОБА кулдауна истекли
+    if (res.hit && sub.invuln <= 0 && (sub.tentacleInvuln || 0) <= 0) {
+      applyDamage(15, 'wall');
+      sub.invuln = 0.5;
+      sub.tentacleInvuln = 1.5; // ← щит от повторных ударов щупальцами
+    }
+  }
+
+  // Обновление чернил
+  // Обновление чернил — ослепляют, но не тормозят
+  for (let i = inkClouds.length - 1; i >= 0; i--) {
+    const c = inkClouds[i];
+    c.life -= dt;
+    if (c.life <= 0) { inkClouds.splice(i, 1); continue; }
+    const dx = sub.x - c.x, dy = sub.y - c.y;
+    if (dx*dx + dy*dy < c.r * c.r) {
+      sub.inkBlind = Math.max(sub.inkBlind || 0, 1.2);
+    }
+  }
+
+  // Таран в тело Кракена
+  const kdx = sub.x - krakenPos.x;
+  const kdy = sub.y - krakenPos.y;
+  const kdist = Math.hypot(kdx, kdy);
+  if (kdist < krakenPos.r + sub.r && sub.invuln <= 0) {
+    krakenHp = Math.max(0, krakenHp - 10);
+    krakenDamageFlash = 0.2;
+    krakenFlashType = 'physical';
+    sub.hp -= 20;
+    sub.invuln = 1.0;
+    const d = kdist || 1;
+    sub.vx = (kdx / d) * 280;
+    sub.vy = (kdy / d) * 280;
+    sub.x = krakenPos.x + (kdx / d) * (krakenPos.r + sub.r + 5);
+    sub.y = krakenPos.y + (kdy / d) * (krakenPos.r + sub.r + 5);
+    soundWallHit();
+    if (sub.hp <= 0) { sub.hp = 0; die(); return; }
+  }
+
+  // Победа
+  // Победа — заморозка вместо убийства
+  if (krakenHp <= 0 && !krakenDefeated) {
+    krakenDefeated = true;
+    krakenSinkT = 0;
+    tentacles.length = 0;
+    inkClouds.length = 0;
+    showToast('❄️ Кракен заморожен! Путь к сокровищу открыт!');
+    soundFinish();
+  }
+
+  updateBossBar();
+}
+
+function spawnTentacle() {
+  // Предсказание позиции игрока (немного вперёд) + широкий разброс
+  const predictX = sub.x + sub.vx * 0.35;
+  const offset = (Math.random() - 0.5) * 600; // ±300
+  let x = predictX + offset;
+  x = Math.max(100, Math.min(WORLD_W - 100, x));
+
+  // Сначала — предупреждение на полу (0.35 сек)
+  tentacleWarnings.push({
+    x: x,
+    life: 0,
+    delay: 0.35
+  });
+}
+
+function spawnTentacleActual(x) {
+  tentacles.push({
+    x: x, baseY: FLOOR_Y, height: 0,
+    maxHeight: 950 + Math.random() * 100,
+    width: 14, life: 0,
+    phase: Math.random() * Math.PI * 2
+  });
+}
+
+function spawnInkCloud() {
+  inkClouds.push({
+    x: sub.x + (Math.random() - 0.5) * 300,
+    y: sub.y + (Math.random() - 0.5) * 200,
+    r: 120, life: 5.0
+  });
+}
+
+function updateBossBar() {
+  const bar = el('bossbar');
+  const fill = el('bossbar-fill');
+  const text = el('bossbar-text');
+  if (!bar) return;
+  if (!krakenActive || krakenDefeated) {
+    bar.classList.add('hidden');
+    return;
+  }
+  bar.classList.remove('hidden');
+  const pct = Math.max(0, krakenHp / krakenMaxHp * 100);
+  if (fill) fill.style.width = pct + '%';
+  if (text) text.textContent = '🐙 КРАКЕН · ' + krakenHp + ' / ' + krakenMaxHp;
+}
+
+// ================================================================
+//  Raycast для лебедки
+// ================================================================
+function raycastWall(x1, y1, x2, y2, r) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.hypot(dx, dy);
+  if (len < 1) return null;
+  const steps = Math.ceil(len / 6);
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const px = x1 + dx * t;
+    const py = y1 + dy * t;
+    for (const w of walls) {
+      if (circleVsSegment(px, py, r, w.x1, w.y1, w.x2, w.y2).hit) {
+        return { x: px, y: py, t: t };
+      }
+    }
+  }
+  return null;
+}
+
+function raycastBoss(x1, y1, x2, y2, boss) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.hypot(dx, dy);
+  const steps = Math.ceil(len / 6);
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const px = x1 + dx * t;
+    const py = y1 + dy * t;
+    const bdx = px - boss.x, bdy = py - boss.y;
+    if (bdx*bdx + bdy*bdy < boss.r * boss.r) {
+      return { x: px, y: py, t };
+    }
+  }
+  return null;
+}
+
+function playBossMusic() {
+  if (!musicEnabled || !gameMusic || !currentLevelData) return;
+  const newSrc = currentLevelData.krakenMusic;
+  if (!newSrc) return;
+  const srcEl = gameMusic.querySelector('source');
+  if (!srcEl) return;
+  if (!srcEl.src.includes(newSrc)) {
+    srcEl.src = newSrc;
+    gameMusic.load();
+  }
+  gameMusic.volume = (AUDIO_SETTINGS.gameMusicVolume || 0.45) *
+    (typeof musicVolumeMultiplier === 'function' ? musicVolumeMultiplier() : 1);
+  gameMusic.play().catch(() => {});
+}
+
 function updateMinimapVisibility() {
   const mm = el('minimap-container');
   if (!mm) {

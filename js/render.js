@@ -112,6 +112,13 @@ function draw() {
     ctx.fill();
   }
 
+  if (currentLevelData && currentLevelData.boss === 'kraken') {
+    for (const c of inkClouds) drawInkCloud(c);
+    drawKraken();
+    for (const w of tentacleWarnings) drawTentacleWarning(w);
+    for (const t of tentacles) drawTentacle(t);
+  }
+
   drawSub();
 
   ctx.restore();
@@ -121,11 +128,34 @@ function draw() {
     drawDarkness();
   }
 
+  if (sub.inkBlind > 0) {
+    drawInkBlindness();
+  }
+
   // 5. Миникарта
   if (inventory.map && started) {
     drawMinimap();
   }
 }
+
+function drawInkBlindness() {
+  const alpha = Math.min(1, sub.inkBlind / 1.2);
+  if (alpha <= 0) return;
+
+  // Одна тёмная заливка
+  ctx.fillStyle = `rgba(6, 3, 15, ${0.5 * alpha})`;
+  ctx.fillRect(0, 0, W, H);
+
+  // Виньетка (один градиент вместо пяти)
+  const cx = W / 2, cy = H / 2;
+  const maxR = Math.max(W, H) * 0.8;
+  const grad = ctx.createRadialGradient(cx, cy, maxR * 0.25, cx, cy, maxR);
+  grad.addColorStop(0, 'rgba(10, 5, 20, 0)');
+  grad.addColorStop(1, `rgba(3, 1, 8, ${0.75 * alpha})`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+}
+
 
 // ================================================================
 //  ТЕМНОТА И ПРОЖЕКТОР (ИСПРАВЛЕННАЯ ВЕРСИЯ)
@@ -238,11 +268,16 @@ function drawMinimap() {
     mCtx.stroke();
   }
 
-  // 3. Финиш (портал)
-  mCtx.beginPath();
-  mCtx.arc(finish.x, finish.y, finish.r, 0, Math.PI * 2);
-  mCtx.fillStyle = '#ffd166';
-  mCtx.fill();
+  // Кракен на радаре
+  if (krakenActive && !krakenDefeated) {
+    mCtx.beginPath();
+    mCtx.arc(krakenPos.x, krakenPos.y, krakenPos.r, 0, Math.PI * 2);
+    mCtx.fillStyle = 'rgba(255, 100, 100, 0.55)';
+    mCtx.fill();
+    mCtx.strokeStyle = '#ff6b6b';
+    mCtx.lineWidth = 3 / scale;
+    mCtx.stroke();
+  }
 
   // 4. Кольца
   if (levelType === 'rings') {
@@ -564,7 +599,10 @@ function drawRing(r, isCurrent) {
 
 function drawFinishPortal() {
   const t = sub.animTime;
-  const allRingsPassed = levelType !== 'rings' || ringsCollected >= ringsRequired;
+  let allRingsPassed = levelType !== 'rings' || ringsCollected >= ringsRequired;
+  if (currentLevelData && currentLevelData.boss === 'kraken' && !krakenDefeated) {
+    allRingsPassed = false;
+  }
   const pulse = 1 + Math.sin(t * 2) * 0.08;
 
   const grad = ctx.createRadialGradient(finish.x, finish.y, finish.r * 0.3, finish.x, finish.y, finish.r * 2);
@@ -682,6 +720,35 @@ function drawSub() {
 function drawFish(f) {
   if (f.type === 'angler') drawAnglerFish(f);
   else drawNormalFish(f);
+
+  if (f.frozen > 0) {
+    ctx.save();
+    ctx.translate(f.x, f.y);
+    ctx.globalAlpha = 0.75;
+
+    ctx.beginPath();
+    ctx.moveTo(-f.r * 1.3, -f.r * 1.1);
+    ctx.lineTo(f.r * 1.3, -f.r * 1.1);
+    ctx.lineTo(f.r * 1.5, 0);
+    ctx.lineTo(f.r * 1.3, f.r * 1.1);
+    ctx.lineTo(-f.r * 1.3, f.r * 1.1);
+    ctx.lineTo(-f.r * 1.5, 0);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(150, 230, 255, 0.4)';
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2 / zoom;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(-f.r * 0.8, -f.r * 0.6);
+    ctx.lineTo(-f.r * 0.3, -f.r * 0.6);
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+    ctx.lineWidth = 3 / zoom;
+    ctx.stroke();
+
+    ctx.restore();
+  }
 }
 
 function drawNormalFish(f) {
@@ -844,13 +911,13 @@ function drawTorpedo(t) {
   ctx.rotate(t.angle);
   
   ctx.beginPath();
-  ctx.moveTo(10, 0);
-  ctx.lineTo(-6, -4);
-  ctx.lineTo(-6, 4);
+  ctx.moveTo(8, 0);
+  ctx.lineTo(-6, -3);
+  ctx.lineTo(-6, 3);
   ctx.closePath();
-  ctx.fillStyle = '#ff6b6b';
+  ctx.fillStyle = '#7fd6ff';
   ctx.fill();
-  ctx.strokeStyle = '#fff';
+  ctx.strokeStyle = '#ffffff';
   ctx.lineWidth = 1;
   ctx.stroke();
   
@@ -858,7 +925,7 @@ function drawTorpedo(t) {
   ctx.moveTo(-6, -2);
   ctx.lineTo(-14 - Math.random() * 4, 0);
   ctx.lineTo(-6, 2);
-  ctx.fillStyle = 'rgba(255, 200, 100, 0.8)';
+  ctx.fillStyle = 'rgba(180, 235, 255, 0.8)';
   ctx.fill();
   
   ctx.restore();
@@ -906,6 +973,268 @@ function drawWinch() {
       ctx.stroke();
     }
   }
+}
+
+// ================================================================
+//  🐙 КРАКЕН
+// ================================================================
+function drawKraken() {
+  const t = sub.animTime;
+  const flash = krakenDamageFlash > 0 && Math.floor(krakenDamageFlash * 20) % 2 === 0 && !krakenDefeated;
+  const isIce = (typeof krakenFlashType !== 'undefined') && krakenFlashType === 'ice';
+  const headR = krakenPos.r;
+
+  const sinkT = (typeof krakenSinkT !== 'undefined') ? krakenSinkT : (krakenDefeated ? 1 : 0);
+  const sinkTarget = FLOOR_Y - headR * 0.5;
+  const headY = krakenPos.y + (sinkTarget - krakenPos.y) * sinkT;
+  const frozen = krakenDefeated;
+  const eyeOpen = Math.max(0, 1 - sinkT * 2);
+
+  // Тень на дне
+  ctx.beginPath();
+  ctx.ellipse(krakenPos.x, FLOOR_Y, headR * 1.3, 20, 0, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fill();
+
+  // Свечение вокруг головы
+  const glow = ctx.createRadialGradient(krakenPos.x, headY, 10, krakenPos.x, headY, headR * 3);
+  glow.addColorStop(0, frozen ? 'rgba(100, 180, 220, 0.35)' : 'rgba(180, 30, 60, 0.35)');
+  glow.addColorStop(1, frozen ? 'rgba(60, 100, 140, 0)' : 'rgba(60, 10, 30, 0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(krakenPos.x, headY, headR * 3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Постоянные щупальца снизу (8 штук)
+  const baseY = headY + headR * 0.6;
+  for (let i = 0; i < 8; i++) {
+    const ang = Math.PI / 2 + ((i - 3.5) / 3.5) * 1.4;
+    const sway = frozen ? 0 : Math.sin(t * 2 + i) * 15;
+    const len = 200 + (frozen ? 0 : Math.sin(t * 1.5 + i * 0.5) * 40);
+    const ex = krakenPos.x + Math.cos(ang) * len * 0.8 + sway;
+    const ey = FLOOR_Y;
+    const cx = krakenPos.x + Math.cos(ang) * len * 0.4;
+    const cy = baseY + len * 0.55;
+
+    ctx.beginPath();
+    ctx.moveTo(krakenPos.x + Math.cos(ang) * 15, baseY);
+    ctx.quadraticCurveTo(cx, cy, ex, ey);
+    ctx.strokeStyle = frozen ? '#3a6a90' : '#6a1040';
+    ctx.lineWidth = 12 / zoom;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(krakenPos.x + Math.cos(ang) * 15, baseY);
+    ctx.quadraticCurveTo(cx, cy, ex, ey);
+    ctx.strokeStyle = frozen ? 'rgba(20, 40, 60, 0.5)' : 'rgba(30, 0, 20, 0.5)';
+    ctx.lineWidth = 5 / zoom;
+    ctx.stroke();
+  }
+
+  // Голова
+  const headGrad = ctx.createRadialGradient(
+    krakenPos.x - headR * 0.3, headY - headR * 0.4, 5,
+    krakenPos.x, headY, headR * 1.2
+  );
+  if (frozen) {
+    headGrad.addColorStop(0, '#a8d8f0');
+    headGrad.addColorStop(0.6, '#5a8ab0');
+    headGrad.addColorStop(1, '#1a3a5a');
+  } else if (flash && isIce) {
+    headGrad.addColorStop(0, '#d8f0ff');
+    headGrad.addColorStop(1, '#3a7fb0');
+  } else if (flash) {
+    headGrad.addColorStop(0, '#ffaaaa');
+    headGrad.addColorStop(1, '#cc4444');
+  } else {
+    headGrad.addColorStop(0, '#8a2050');
+    headGrad.addColorStop(0.6, '#4a1028');
+    headGrad.addColorStop(1, '#1a0510');
+  }
+  ctx.beginPath();
+  ctx.ellipse(krakenPos.x, headY, headR, headR * 1.1, 0, 0, Math.PI * 2);
+  ctx.fillStyle = headGrad;
+  ctx.fill();
+  ctx.strokeStyle = frozen ? '#0a1a2a' : '#0a0208';
+  ctx.lineWidth = 3 / zoom;
+  ctx.stroke();
+
+  // Морозное облако при попадании торпеды
+  if (krakenDamageFlash > 0 && isIce && !frozen) {
+    const iceAlpha = Math.min(1, krakenDamageFlash * 2);
+    const iceGrad = ctx.createRadialGradient(krakenPos.x, headY, headR * 0.5, krakenPos.x, headY, headR * 2);
+    iceGrad.addColorStop(0, `rgba(180, 235, 255, ${0.5 * iceAlpha})`);
+    iceGrad.addColorStop(1, 'rgba(180, 235, 255, 0)');
+    ctx.fillStyle = iceGrad;
+    ctx.beginPath();
+    ctx.arc(krakenPos.x, headY, headR * 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Глаз
+  const eyeR = headR * 0.5;
+  const eyeAng = Math.atan2(sub.y - headY, sub.x - krakenPos.x);
+  const pTrackX = Math.cos(eyeAng) * eyeR * 0.15 * eyeOpen;
+  const pTrackY = Math.sin(eyeAng) * eyeR * 0.15 * eyeOpen;
+
+  if (frozen || eyeOpen > 0.05) {
+    // Белок
+    ctx.beginPath();
+    ctx.arc(krakenPos.x, headY, eyeR, 0, Math.PI * 2);
+    ctx.fillStyle = frozen ? '#c8e8ff' : (flash ? '#ffffff' : '#ffd166');
+    ctx.fill();
+    ctx.strokeStyle = frozen ? '#2a4a6a' : '#000000';
+    ctx.lineWidth = 2 / zoom;
+    ctx.stroke();
+
+    // Красные прожилки (только пока жив)
+    if (!frozen) {
+      const hpPct = krakenHp / krakenMaxHp;
+      const veinCount = Math.floor((1 - hpPct) * 12);
+      for (let i = 0; i < veinCount; i++) {
+        const angle = (i / veinCount) * Math.PI * 2 + (i % 2 ? 0.4 : 0);
+        const sx = krakenPos.x + Math.cos(angle) * eyeR * 0.88;
+        const sy = headY + Math.sin(angle) * eyeR * 0.88;
+        const ex = krakenPos.x + Math.cos(angle + 0.15) * eyeR * 0.35;
+        const ey = headY + Math.sin(angle + 0.15) * eyeR * 0.35;
+        const mx = (sx + ex) / 2 + Math.sin(i * 2) * 4;
+        const my = (sy + ey) / 2 + Math.cos(i * 2) * 4;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.quadraticCurveTo(mx, my, ex, ey);
+        ctx.strokeStyle = `rgba(180, 15, 15, ${0.55 + 0.4 * (1 - hpPct)})`;
+        ctx.lineWidth = (1.2 + (1 - hpPct) * 1.3) / zoom;
+        ctx.stroke();
+      }
+    }
+
+    // Зрачок
+    if (eyeOpen > 0.05) {
+      ctx.beginPath();
+      ctx.arc(krakenPos.x + pTrackX, headY + pTrackY, eyeR * 0.6 * eyeOpen, 0, Math.PI * 2);
+      ctx.fillStyle = frozen ? '#4a7aa0' : '#ff4400';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(krakenPos.x + pTrackX, headY + pTrackY, eyeR * 0.35 * eyeOpen, 0, Math.PI * 2);
+      ctx.fillStyle = '#000000';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(krakenPos.x + pTrackX - eyeR * 0.15 * eyeOpen, headY + pTrackY - eyeR * 0.15 * eyeOpen, eyeR * 0.1 * eyeOpen, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+    }
+  }
+
+  // Закрытый глаз + ледяной панцирь (заморожен)
+  if (frozen) {
+    ctx.beginPath();
+    ctx.moveTo(krakenPos.x - eyeR * 0.8, headY);
+    ctx.quadraticCurveTo(krakenPos.x, headY + eyeR * 0.5, krakenPos.x + eyeR * 0.8, headY);
+    ctx.strokeStyle = '#1a3a5a';
+    ctx.lineWidth = 3 / zoom;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    const iceAlpha = Math.min(1, sinkT * 1.5);
+    ctx.beginPath();
+    ctx.ellipse(krakenPos.x, headY, headR * 1.15, headR * 1.25, 0, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(180, 235, 255, ${0.25 * iceAlpha})`;
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255, 255, 255, ${0.6 * iceAlpha})`;
+    ctx.lineWidth = 2 / zoom;
+    ctx.stroke();
+  }
+}
+
+
+function drawTentacle(tent) {
+  if (tent.height < 1) return;
+
+  const sway = Math.sin(tent.life * 4 + tent.phase) * 20;
+  const baseX = tent.x;
+  const baseY = FLOOR_Y;
+  const tipX = baseX + sway;
+  const tipY = baseY - tent.height;
+
+  const glow = ctx.createRadialGradient(baseX, baseY, 5, baseX, baseY, tent.height);
+  glow.addColorStop(0, 'rgba(180, 30, 60, 0.35)');
+  glow.addColorStop(1, 'rgba(60, 10, 30, 0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(baseX, baseY, tent.height, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(baseX - tent.width, baseY);
+  ctx.quadraticCurveTo(baseX - tent.width * 0.5, baseY - tent.height * 0.5, tipX - 4, tipY);
+  ctx.lineTo(tipX + 4, tipY);
+  ctx.quadraticCurveTo(baseX + tent.width * 0.5, baseY - tent.height * 0.5, baseX + tent.width, baseY);
+  ctx.closePath();
+  ctx.fillStyle = '#6a1040';
+  ctx.fill();
+  ctx.strokeStyle = '#1a0510';
+  ctx.lineWidth = 2 / zoom;
+  ctx.stroke();
+
+  for (let i = 1; i <= 5; i++) {
+    const tt = i / 6;
+    const px = baseX + (tipX - baseX) * tt;
+    const py = baseY + (tipY - baseY) * tt;
+    ctx.beginPath();
+    ctx.arc(px, py, 3 + (1 - tt) * 2, 0, Math.PI * 2);
+    ctx.fillStyle = '#ff6b8a';
+    ctx.fill();
+  }
+
+  ctx.beginPath();
+  ctx.arc(tipX, tipY, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#ff3366';
+  ctx.fill();
+}
+
+function drawInkCloud(c) {
+  const alpha = Math.min(1, c.life / 1.0);
+  const grad = ctx.createRadialGradient(c.x, c.y, c.r * 0.2, c.x, c.y, c.r);
+  grad.addColorStop(0, `rgba(10, 0, 20, ${0.85 * alpha})`);
+  grad.addColorStop(0.6, `rgba(20, 5, 30, ${0.6 * alpha})`);
+  grad.addColorStop(1, 'rgba(20, 5, 30, 0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+  ctx.fill();
+
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + c.life;
+    const bx = c.x + Math.cos(a) * c.r * 0.5;
+    const by = c.y + Math.sin(a) * c.r * 0.5;
+    ctx.beginPath();
+    ctx.arc(bx, by, c.r * 0.35, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(30, 10, 40, ${0.5 * alpha})`;
+    ctx.fill();
+  }
+}
+function drawTentacleWarning(w) {
+  const k = w.life / w.delay;
+  const pulse = 0.4 + Math.sin(w.life * 20) * 0.3;
+
+  // Круги-волны на полу
+  for (let i = 0; i < 3; i++) {
+    const r = 20 + k * 60 + i * 15;
+    ctx.beginPath();
+    ctx.ellipse(w.x, FLOOR_Y - 4, r, r * 0.25, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(255, 100, 100, ${(1 - k) * 0.7})`;
+    ctx.lineWidth = 3 / zoom;
+    ctx.stroke();
+  }
+
+  // Красная точка-центр
+  ctx.beginPath();
+  ctx.ellipse(w.x, FLOOR_Y - 4, 12, 4, 0, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(255, 60, 60, ${pulse})`;
+  ctx.fill();
 }
 
 // ================================================================

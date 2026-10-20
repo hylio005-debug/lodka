@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Погружение (v4.0)</title>
+<title>Погружение (v4.1)</title>
 <style>
   html, body {
     margin: 0; background: #0b1a2a; color: #eaf6ff;
@@ -419,6 +419,28 @@
   }
   @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
+  /* HP-бар босса */
+  #bossbar {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    width: 60%; max-width: 520px; height: 30px;
+    background: rgba(7, 19, 32, 0.9);
+    border: 2px solid #ff6b6b; border-radius: 8px;
+    overflow: hidden; z-index: 60; pointer-events: none;
+    box-shadow: 0 0 24px rgba(255, 107, 107, 0.5);
+  }
+  #bossbar-fill {
+    height: 100%; width: 100%;
+    background: linear-gradient(90deg, #a02020, #ff4444, #ff8888);
+    transition: width 0.3s ease;
+  }
+  #bossbar-text {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: monospace; font-size: 13px; font-weight: bold;
+    color: #ffffff; text-shadow: 0 0 4px #000, 0 0 8px #000;
+    letter-spacing: 2px; white-space: nowrap;
+  }
+
   @media (max-width: 700px) {
     #hud { font-size: 11px; }
     #hpbar { width: 120px; height: 20px; bottom: calc(140px + env(safe-area-inset-bottom, 0px)); }
@@ -451,12 +473,16 @@
 <div id="hptext" class="hidden">Корпус: 100</div>
 <div id="energybar" class="hidden"><div id="energyfill"></div></div>
 <div id="energytext" class="hidden">Энергия: 100</div>
-<div id="energybar" class="hidden"><div id="energyfill"></div></div>
-<div id="energytext" class="hidden">Энергия: 100</div>
+
 
 <div id="hint" class="hidden">ЛКМ — моторы вперёд. Курсор — направление.</div>
 <div id="startHint" class="hidden">Нажмите ЛКМ или МОТОР<br><span style="font-size:14px; opacity:0.7;">(Дрон ожидает запуска)</span></div>
 <div id="playerBadge" class="player-badge hidden"></div>
+
+<div id="bossbar" class="hidden">
+  <div id="bossbar-fill"></div>
+  <div id="bossbar-text">🐙 КРАКЕН</div>
+</div>
 
 <div id="gameControls" class="hidden">
   <button class="gc-btn" id="pauseBtn" title="Пауза (Esc)">⏸</button>
@@ -466,13 +492,13 @@
 
 <div id="cooldownPanel" class="hidden">
   <div class="cd-circle" id="winchCd" title="Лебедка"><div class="fill"></div><div class="icon">⚙</div></div>
-  <div class="cd-circle" id="torpedoCd" title="Торпеда"><div class="fill"></div><div class="icon">🚀</div></div>
+  <div class="cd-circle" id="torpedoCd" title="Заморозка"><div class="fill"></div><div class="icon">❄️</div></div>
 </div>
 
 <div id="mobileArtifacts" class="hidden">
   <div class="mob-art-btn" id="mobWinchBtn" title="Лебедка">⚙</div>
   <div class="mob-art-btn" id="mobFlashBtn" title="Прожектор">💡</div>
-  <div class="mob-art-btn" id="mobTorpedoBtn" title="Торпеда">🚀</div>
+  <div class="mob-art-btn" id="mobTorpedoBtn" title="Заморозка">❄️</div>
 </div>
 
 <div id="thrustButton" class="hidden">
@@ -503,7 +529,7 @@
 <!-- Экран 1: Заставка -->
 <div id="screen-splash" class="overlay show">
   <div class="panel">
-    <div class="version-badge" style="display:inline-block; background:rgba(212,162,89,0.2); border:1px solid #d4a259; color:#ffd166; font-family:monospace; font-size:11px; padding:3px 10px; border-radius:12px; margin-bottom:10px; letter-spacing:1px;">ВЕРСИЯ 4.0 — АРТЕФАКТЫ</div>
+    <div class="version-badge" style="display:inline-block; background:rgba(212,162,89,0.2); border:1px solid #d4a259; color:#ffd166; font-family:monospace; font-size:11px; padding:3px 10px; border-radius:12px; margin-bottom:10px; letter-spacing:1px;">ВЕРСИЯ 4.1 — КРАКЕН</div>
     <h1>ПОГРУЖЕНИЕ</h1>
     <p style="color:#d4a259; letter-spacing:2px; font-size:14px;">◆ ЗАТОНУВШИЕ ХРАМЫ ◆</p>
     <div class="story-text">
@@ -582,7 +608,7 @@
       <div><b>ЛКМ (зажать)</b> — моторы вперёд. <b>Курсор</b> — поворот.</div>
       <div><b>ПКМ</b> — Лебедка (Копье с парашютом).</div>
       <div><b>СКМ</b> — Прожектор (Вкл/Выкл).</div>
-      <div><b>Space (Пробел)</b> — Ракетомет (Торпеда).</div>
+      <div><b>Space (Пробел)</b> — Крио-бластер (замораживает рыб).</div>
       <div><b>Esc</b> — Пауза (в паузе доступны артефакты).</div>
       <div style="margin-top:8px;"><b>На смартфоне:</b></div>
       <div><b>Стик справа</b> — направление. <b>Мотор слева</b> — движение.</div>
@@ -597,7 +623,7 @@
   <div class="panel">
     <h2>Параметры</h2>
     <div class="controls-list">
-      <div><b>Версия</b> — <span id="opt-version">4.0</span></div>
+      <div><b>Версия</b> — <span id="opt-version">4.1</span></div>
       <div><b>Сервер</b> — <span id="opt-server">—</span></div>
       <div><b>Музыка</b> — <span id="opt-music">—</span></div>
       <div><b>Качество</b> — 
@@ -684,7 +710,7 @@
       <div class="art-btn off" id="artMapBtn"><span class="icon">🗺</span><span class="name">Карта</span></div>
       <div class="art-btn off" id="artWinchBtn"><span class="icon">⚙</span><span class="name">Лебедка</span></div>
       <div class="art-btn off" id="artFlashBtn"><span class="icon">💡</span><span class="name">Свет</span></div>
-      <div class="art-btn off" id="artTorpedoBtn"><span class="icon">🚀</span><span class="name">Торпеда</span></div>
+      <div class="art-btn off" id="artTorpedoBtn"><span class="icon">❄️</span><span class="name">Крио</span></div>
     </div>
 
     <!-- Настройки звука -->

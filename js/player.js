@@ -31,10 +31,19 @@ function switchMode(mode) {
   el('tabNick').classList.toggle('active', mode === 'nick');
   el('paneList').classList.toggle('active', mode === 'list');
   el('paneNick').classList.toggle('active', mode === 'nick');
+
   currentPlayer = null;
   renderSelectedPreview();
-  updateConfirmButton();
-  updateNickPreview();
+
+  if (mode === 'list') {
+    el('classSelect').value = '';
+    const ss = el('studentSelect');
+    ss.innerHTML = '<option value="">— сначала выберите класс —</option>';
+    ss.disabled = true;
+    el('confirmStudentBtn').disabled = true;
+  } else {
+    updateNickPreview();
+  }
 }
 
 function updateConfirmButton() {
