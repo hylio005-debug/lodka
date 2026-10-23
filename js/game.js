@@ -1,16 +1,31 @@
 // ================================================================
 //  js/game.js — ЛОГИКА, ЦИКЛ, СТАТИСТИКА, ОТПРАВКА
-//  Игра «Погружение» v3.3 (Артефакты)
+//  Игра «Погружение» v4.2 (Кракен)
 // ================================================================
 
 // ---------- Ввод: мышь ----------
 const mouse = { x: 0, y: 0, down: false, rightDown: false };
 
 canvas.addEventListener('mousedown', e => {
+  const rect = canvas.getBoundingClientRect();
+  const sx = (e.clientX - rect.left) * (canvas.width / rect.width);
+  const sy = (e.clientY - rect.top) * (canvas.height / rect.height);
+  
+  let nx = sx / zoom + camera.x;
+  let ny = sy / zoom + camera.y;
+  
+  // Защита от битых координат
+  if (!isFinite(nx) || isNaN(nx)) nx = sub.x + Math.cos(sub.angle) * 100;
+  if (!isFinite(ny) || isNaN(ny)) ny = sub.y + Math.sin(sub.angle) * 100;
+  
+  mouse.x = nx;
+  mouse.y = ny;
+
   if (e.button === 0) { // ЛКМ
     mouse.down = true; 
     e.preventDefault(); 
   }
+  // (Остальной код для ПКМ и СКМ оставь как есть)
   if (e.button === 2) { // ПКМ (Лебедка)
     mouse.rightDown = true;
     if (started && !paused && inventory.winch && winchCooldown <= 0 && winchState === 'idle') {
@@ -191,8 +206,16 @@ function circleVsSegment(cx, cy, r, x1, y1, x2, y2) {
   const ddx = cx - closestX, ddy = cy - closestY;
   const dist2 = ddx * ddx + ddy * ddy;
   if (dist2 < r * r) {
-    const dist = Math.sqrt(dist2) || 1e-6;
-    return { hit: true, nx: ddx / dist, ny: ddy / dist, px: closestX, py: closestY, depth: r - dist };
+    const dist = Math.sqrt(dist2);
+    let nx = 1, ny = 1;
+    if (dist > 0.001) {
+      nx = ddx / dist;
+      ny = ddy / dist;
+    } else {
+      nx = ddx > 0 ? 1 : -1;
+      ny = ddy > 0 ? 1 : -1;
+    }
+    return { hit: true, nx, ny, px: closestX, py: closestY, depth: r - dist };
   }
   return { hit: false };
 }
@@ -273,8 +296,9 @@ function updateWorldFromLevel(data) {
 function fireWinch() {
   const fx = Math.cos(sub.angle);
   const fy = Math.sin(sub.angle);
-  const rawX = sub.x + fx * 300;
-  const rawY = sub.y + fy * 300;
+  const WINCH_RANGE = 200;
+  const rawX = sub.x + fx * WINCH_RANGE;
+  const rawY = sub.y + fy * WINCH_RANGE;
 
   let targetX = rawX;
   let targetY = rawY;
@@ -284,7 +308,12 @@ function fireWinch() {
   const wallHit = raycastWall(sub.x, sub.y, rawX, rawY, 5);
   let bossHit = null;
   if (currentLevelData && currentLevelData.boss === 'kraken' && !krakenDefeated) {
-    bossHit = raycastBoss(sub.x, sub.y, rawX, rawY, krakenPos);
+    const _kHead = getKrakenHeadPos();
+    bossHit = raycastBoss(sub.x, sub.y, rawX, rawY, {
+      x: _kHead.x,
+      y: _kHead.y,
+      r: krakenPos.r
+    });
   }
 
   // Берём то, что ближе
@@ -312,6 +341,8 @@ function fireWinch() {
   winchHook.pullTime = 0;
   winchHook.t = 0;
   soundRing();
+  lastFirePos = { x: sub.x, y: sub.y };
+  lastFireTime = elapsed;
 }
 
 function toggleFlashlight() {
@@ -336,6 +367,8 @@ function fireTorpedo() {
   });
   torpedoCooldown = TORPEDO_COOLDOWN_MAX;
   soundRing();
+  lastFirePos = { x: sub.x, y: sub.y };
+  lastFireTime = elapsed;
 }
 
 // ---------- Запуск уровня ----------
@@ -398,14 +431,19 @@ function prepareRun() {
 
   krakenActive = false;
   krakenDefeated = false;
-  krakenHp = 300;
-  krakenMaxHp = 300;
+  krakenHp = 100;
+  krakenMaxHp = 100;
   krakenPhase = 1;
   krakenAttackTimer = 0;
   krakenInkTimer = 0;
   krakenDamageFlash = 0;
   krakenFlashType = 'ice';
   krakenSinkT = 0;
+  krakenWakeT = 0;
+  
+  krakenRiseT = 0;
+  krakenBlinkT = 0;
+  krakenSquintT = 0;
   if (currentLevelData && currentLevelData.bossPos) {
     krakenPos = { ...currentLevelData.bossPos };
   } else {
@@ -519,10 +557,39 @@ function applyDamage(a, source) {
 // ---------- Главный update ----------
 function update(dt) {
   if (!running || !started || paused) return;
+    // ==========================================
+  // 🛡️ АНТИ-NaN БРОНЯ (Защита от телепортации)
+  // ==========================================
+  if (isNaN(sub.x) || !isFinite(sub.x)) sub.x = 100;
+  if (isNaN(sub.y) || !isFinite(sub.y)) sub.y = 100;
+  if (isNaN(sub.vx) || !isFinite(sub.vx)) sub.vx = 0;
+  if (isNaN(sub.vy) || !isFinite(sub.vy)) sub.vy = 0;
+  if (isNaN(sub.angle) || !isFinite(sub.angle)) sub.angle = 0;
+  if (isNaN(sub.angVel) || !isFinite(sub.angVel)) sub.angVel = 0;
+  
+  if (isNaN(mouse.x) || !isFinite(mouse.x)) mouse.x = sub.x + 100;
+  if (isNaN(mouse.y) || !isFinite(mouse.y)) mouse.y = sub.y;
+  
+  if (isNaN(camera.x) || !isFinite(camera.x)) camera.x = 0;
+  if (isNaN(camera.y) || !isFinite(camera.y)) camera.y = 0;
+  
+  if (isNaN(winchHook.x) || isNaN(winchHook.y)) winchState = 'idle';
+  // ==========================================
+   const prevX = sub.x;
+   const prevY = sub.y;
   
   // Если ждем старта — только анимация
   if (isWaiting) {
     sub.animTime += dt;
+      // Если координаты лодки сломались — принудительно возвращаем её на старт
+  if (isNaN(sub.x) || isNaN(sub.y) || sub.x < -100 || sub.y < -100) {
+    sub.x = 100; 
+    sub.y = 980;
+    sub.vx = 0; 
+    sub.vy = 0;
+    sub.hp = 100; // На всякий случай
+    showToast('⚠️ Координаты восстановлены');
+  }
     if (!isTouch && mouse.down) startActualRun();
     if (isTouch && thrust.pressed) startActualRun();
     return; 
@@ -588,7 +655,8 @@ function update(dt) {
     const dy = winchHook.y - sub.y;
     const dist = Math.hypot(dx, dy);
 
-    if (dist < 12 || winchHook.pullTime > 1.0) {
+    // Если дистанция стала NaN или бесконечной — сбрасываем лебедку
+    if (isNaN(dist) || !isFinite(dist) || dist < 12 || winchHook.pullTime > 1.0) {
       winchState = 'idle';
       winchCooldown = WINCH_COOLDOWN_MAX;
       sub.vx = 0; sub.vy = 0;
@@ -679,8 +747,9 @@ function update(dt) {
     }
     // Попадание в Кракена
     if (!hitSomething && currentLevelData && currentLevelData.boss === 'kraken' && !krakenDefeated) {
-      const kdx = t.x - krakenPos.x;
-      const kdy = t.y - krakenPos.y;
+      const kHead = getKrakenHeadPos();
+      const kdx = t.x - kHead.x;
+      const kdy = t.y - kHead.y;
       if (kdx*kdx + kdy*kdy < krakenPos.r * krakenPos.r) {
         krakenHp = Math.max(0, krakenHp - 25);
         krakenDamageFlash = 0.3;
@@ -877,6 +946,19 @@ function update(dt) {
   }
 
   elapsed += dt;
+  // --- ОТЛАДОЧНЫЙ КОД ---
+  if (Math.abs(sub.x - prevX) > 150 || Math.abs(sub.y - prevY) > 150) {
+    console.warn('🚨 [DEBUG] РЕЗКИЙ СКАЧОК ЛОДКИ!', 'Было:', prevX.toFixed(1), prevY.toFixed(1), 'Стало:', sub.x.toFixed(1), sub.y.toFixed(1), 'Скорость:', sub.vx.toFixed(1), sub.vy.toFixed(1));
+  }
+  if (sub.x <= 0 || sub.y <= 0 || sub.x >= WORLD_W || sub.y >= WORLD_H) {
+    console.warn('🚨 [DEBUG] ВЫЛЕТ В СТЕНУ/УГОЛ!', sub.x.toFixed(1), sub.y.toFixed(1));
+    // Принудительно вытаскиваем лодку обратно в центр экрана
+    sub.x = Math.max(100, Math.min(WORLD_W - 100, sub.x));
+    sub.y = Math.max(100, Math.min(WORLD_H - 100, sub.y));
+    sub.vx = 0;
+    sub.vy = 0;
+  }
+  // ----------------------
   updateCamera();
   updateHud();
 }
@@ -1279,6 +1361,7 @@ function loop(now) {
 detectQuality();
 generateDecorations();
 resize();
+
 updateCamera();
 showScreen('splash');
 lastTime = performance.now();
@@ -1287,6 +1370,31 @@ lastTime = performance.now();
 // ================================================================
 function updateKraken(dt) {
   if (!currentLevelData || currentLevelData.boss !== 'kraken') return;
+
+  // Пробуждение
+  if (krakenActive && !krakenDefeated && krakenWakeT < 1) {
+    krakenWakeT = Math.min(1, krakenWakeT + dt / 0.9);
+  }
+
+  // Подъём с пола (медленнее открытия глаза)
+  if (krakenActive && !krakenDefeated && krakenRiseT < 1) {
+    krakenRiseT = Math.min(1, krakenRiseT + dt / 1.8);
+  }
+
+  // Таймеры моргания
+  if (krakenBlinkT > 0) {
+    krakenBlinkT -= dt;
+    if (krakenBlinkT < 0) krakenBlinkT = 0;
+  }
+  if (krakenSquintT > 0) {
+    krakenSquintT -= dt;
+    if (krakenSquintT < 0) krakenSquintT = 0;
+  }
+
+  // Случайное моргание (редкое)
+  if (krakenActive && !krakenDefeated && krakenBlinkT <= 0 && Math.random() < dt * 0.3) {
+    krakenBlinkT = 0.3;
+  }
 
   if (krakenDefeated) {
     if (krakenSinkT < 1) {
@@ -1340,16 +1448,28 @@ function updateKraken(dt) {
     }
   }
   // Обновление щупалец
-   // Обновление щупалец — коллизия + отдельный кулдаун
+  // Обновление щупалец — медленный плавный подъём, быстрый спуск
   for (let i = tentacles.length - 1; i >= 0; i--) {
     const t = tentacles[i];
     t.life += dt;
-    if (t.life < 0.5) {
-      t.height = (t.life / 0.5) * t.maxHeight;
-    } else if (t.life < 1.5) {
+
+    // Тайминги (в секундах)
+    const RISE = 3.3;   // медленный подъём — в 3× медленнее предыдущего
+    const HOLD = 0.5;   // держится наверху
+    const FALL = 0.55;  // быстрый спуск
+
+    if (t.life < RISE) {
+      // Подъём: ease-out — быстро стартует, плавно тормозит у потолка
+      const k = t.life / RISE;
+      const eased = 1 - Math.pow(1 - k, 2);
+      t.height = eased * t.maxHeight;
+    } else if (t.life < RISE + HOLD) {
       t.height = t.maxHeight;
-    } else if (t.life < 2.0) {
-      t.height = t.maxHeight * (1 - (t.life - 1.5) / 0.5);
+    } else if (t.life < RISE + HOLD + FALL) {
+      // Спуск: ease-in — плавно начинает, ускоряется вниз
+      const k = (t.life - RISE - HOLD) / FALL;
+      const eased = k * k;
+      t.height = t.maxHeight * (1 - eased);
     } else {
       tentacles.splice(i, 1);
       continue;
@@ -1375,7 +1495,7 @@ function updateKraken(dt) {
 
     // Урон — только если ОБА кулдауна истекли
     if (res.hit && sub.invuln <= 0 && (sub.tentacleInvuln || 0) <= 0) {
-      applyDamage(15, 'wall');
+      applyDamage(30, 'wall');
       sub.invuln = 0.5;
       sub.tentacleInvuln = 1.5; // ← щит от повторных ударов щупальцами
     }
@@ -1394,8 +1514,9 @@ function updateKraken(dt) {
   }
 
   // Таран в тело Кракена
-  const kdx = sub.x - krakenPos.x;
-  const kdy = sub.y - krakenPos.y;
+  const kHead = getKrakenHeadPos();
+  const kdx = sub.x - kHead.x;
+  const kdy = sub.y - kHead.y;
   const kdist = Math.hypot(kdx, kdy);
   if (kdist < krakenPos.r + sub.r && sub.invuln <= 0) {
     krakenHp = Math.max(0, krakenHp - 10);
@@ -1406,8 +1527,8 @@ function updateKraken(dt) {
     const d = kdist || 1;
     sub.vx = (kdx / d) * 280;
     sub.vy = (kdy / d) * 280;
-    sub.x = krakenPos.x + (kdx / d) * (krakenPos.r + sub.r + 5);
-    sub.y = krakenPos.y + (kdy / d) * (krakenPos.r + sub.r + 5);
+    sub.x = kHead.x + (kdx / d) * (krakenPos.r + sub.r + 5);
+    sub.y = kHead.y + (kdy / d) * (krakenPos.r + sub.r + 5);
     soundWallHit();
     if (sub.hp <= 0) { sub.hp = 0; die(); return; }
   }
@@ -1427,13 +1548,21 @@ function updateKraken(dt) {
 }
 
 function spawnTentacle() {
-  // Предсказание позиции игрока (немного вперёд) + широкий разброс
-  const predictX = sub.x + sub.vx * 0.35;
-  const offset = (Math.random() - 0.5) * 600; // ±300
-  let x = predictX + offset;
+  // Если игрок стрелял недавно — бьём туда. Иначе — рандом возле дрона.
+  const TIME_WINDOW = 4.0; // 4 секунды
+  let x;
+  if (elapsed - lastFireTime < TIME_WINDOW) {
+    // Точка последнего выстрела ± небольшой разброс
+    x = lastFirePos.x + (Math.random() - 0.5) * 60;
+  } else {
+    // Рандом возле текущей позиции
+    x = sub.x + (Math.random() - 0.5) * 600;
+  }
   x = Math.max(100, Math.min(WORLD_W - 100, x));
 
-  // Сначала — предупреждение на полу (0.35 сек)
+  // Прищур глаза при атаке
+  if (typeof krakenSquintT !== 'undefined') krakenSquintT = 0.8;
+
   tentacleWarnings.push({
     x: x,
     life: 0,
@@ -1523,6 +1652,31 @@ function playBossMusic() {
   gameMusic.volume = (AUDIO_SETTINGS.gameMusicVolume || 0.45) *
     (typeof musicVolumeMultiplier === 'function' ? musicVolumeMultiplier() : 1);
   gameMusic.play().catch(() => {});
+}
+function getKrakenHeadPos() {
+  const headR = krakenPos.r;
+  const restingY = FLOOR_Y - headR * 1.05;
+  const riseT = (typeof krakenRiseT !== 'undefined') ? krakenRiseT : (krakenActive ? 1 : 0);
+  const baseY = restingY + (krakenPos.y - restingY) * riseT;
+  const sinkT = (typeof krakenSinkT !== 'undefined') ? krakenSinkT : (krakenDefeated ? 1 : 0);
+
+  let x = krakenPos.x;
+  let y = baseY + (restingY - baseY) * sinkT;
+
+  // Живое качание с течением (только когда проснулся и жив)
+  if (krakenActive && !krakenDefeated) {
+    const t = sub.animTime;
+    // Увеличили амплитуду по X и Y
+    x += Math.sin(t * 0.55) * 30 + Math.sin(t * 1.3) * 10;
+    y += Math.sin(t * 0.8) * 35 + Math.sin(t * 1.7) * 12;
+  }
+
+  return { x, y };
+}
+
+// Совместимость со старым именем
+function getKrakenHeadY() {
+  return getKrakenHeadPos().y;
 }
 
 function updateMinimapVisibility() {

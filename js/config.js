@@ -1,9 +1,9 @@
 // ================================================================
 //  js/config.js — КОНСТАНТЫ И НАСТРОЙКИ
-//  Игра «Погружение» v4.1
+//  Игра «Погружение» v4.2
 // ================================================================
 
-const GAME_VERSION = '4.1';
+const GAME_VERSION = '4.2';
 const SERVER_URL = 'https://lodka777.online/api.php';
 
 const UNLOCK_THRESHOLD = 80;
@@ -120,9 +120,9 @@ let finishBlockedWarning = false;
 // Лебедка
 let winchActive = false;
 let winchState = 'idle';   // 'idle', 'shooting', 'pulling'
-let winchHook = { x: 0, y: 0, targetX: 0, targetY: 0, t: 0, maxDist: 300 };
+let winchHook = { x: 0, y: 0, originX: 0, originY: 0, targetX: 0, targetY: 0, t: 0, maxDist: 200, hitBoss: false, pullTime: 0 };
 let winchCooldown = 0;
-const WINCH_COOLDOWN_MAX = 3.0; // 3 секунды
+const WINCH_COOLDOWN_MAX = 1.5; // 3 секунды
 
 // Прожектор
 let flashlightOn = false;
@@ -137,14 +137,20 @@ const TORPEDO_SPEED = 400;
 // ---------- КРАКЕН (БОСС 5-го УРОВНЯ) ----------
 let krakenActive = false;
 let krakenDefeated = false;
-let krakenHp = 300;
-let krakenMaxHp = 300;
+let krakenHp = 100;
+let krakenMaxHp = 100;
 let krakenPhase = 1;
 let krakenAttackTimer = 0;
 let krakenInkTimer = 0;
 let krakenDamageFlash = 0;
 let krakenFlashType = 'ice';
 let krakenSinkT = 0;
+let krakenWakeT = 0;
+let krakenRiseT = 0;
+let krakenBlinkT = 0;
+let krakenSquintT = 0;
+let lastFirePos = { x: 0, y: 0 };
+let lastFireTime = -999;
 let tentacleWarnings = [];
 let krakenPos = { x: 2900, y: 550, r: 90 };
 let tentacles = [];

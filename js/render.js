@@ -2,6 +2,10 @@
 //  js/render.js — ОТРИСОВКА
 // ================================================================
 
+// ================================================================
+//  js/render.js — ОТРИСОВКА
+// ================================================================
+
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d', { alpha: false });
 
@@ -9,8 +13,31 @@ const ctx = canvas.getContext('2d', { alpha: false });
 const lightCanvas = document.createElement('canvas');
 const lightCtx = lightCanvas.getContext('2d');
 
-// ... дальше идет function updateZoom() и остальной код
+// ================================================================
+// ЗАГРУЗКА ВСЕХ СЛОЕВ КРАКЕНА ИЗ SVG
+// ================================================================
+const svgKrakenHead = new Image();
+svgKrakenHead.src = 'assets/boss/kraken/kraken-head.svg';
+
+const svgKrakenEye = new Image();
+svgKrakenEye.src = 'assets/boss/kraken/kraken-eye.svg';
+
+const svgKrakenPupilLeft = new Image();
+svgKrakenPupilLeft.src = 'assets/boss/kraken/kraken-pupil-left.svg';
+
+const svgKrakenPupilRight = new Image();
+svgKrakenPupilRight.src = 'assets/boss/kraken/kraken-pupil-right.svg';
+
+const svgKrakenEyelid = new Image();
+svgKrakenEyelid.src = 'assets/boss/kraken/kraken-eyelid.svg';
+
+const svgKrakenMouth = new Image();
+svgKrakenMouth.src = 'assets/boss/kraken/kraken-mouth.svg';
+
+// ================================================================
 function updateZoom() {
+
+
   zoom = W / getTargetViewWidth();
   zoom = Math.max(0.6, Math.min(zoom, 2.5));
 }
@@ -977,18 +1004,58 @@ function drawWinch() {
 
 // ================================================================
 //  🐙 КРАКЕН
+
+
 // ================================================================
+// Безопасная покраска картинки (без захвата фона)
+const tintCanvas = document.createElement('canvas');
+const tintCtx = tintCanvas.getContext('2d');
+
+function drawTintedImage(img, x, y, w, h, color) {
+  if (!img.complete || img.naturalWidth === 0) return;
+  tintCanvas.width = w;
+  tintCanvas.height = h;
+  tintCtx.clearRect(0, 0, w, h);
+  tintCtx.drawImage(img, 0, 0, w, h);
+  tintCtx.globalCompositeOperation = 'source-in';
+  tintCtx.fillStyle = color;
+  tintCtx.fillRect(0, 0, w, h);
+  tintCtx.globalCompositeOperation = 'source-over';
+  ctx.drawImage(tintCanvas, x, y);
+}
+
+
 function drawKraken() {
   const t = sub.animTime;
   const flash = krakenDamageFlash > 0 && Math.floor(krakenDamageFlash * 20) % 2 === 0 && !krakenDefeated;
   const isIce = (typeof krakenFlashType !== 'undefined') && krakenFlashType === 'ice';
   const headR = krakenPos.r;
 
-  const sinkT = (typeof krakenSinkT !== 'undefined') ? krakenSinkT : (krakenDefeated ? 1 : 0);
-  const sinkTarget = FLOOR_Y - headR * 0.5;
-  const headY = krakenPos.y + (sinkTarget - krakenPos.y) * sinkT;
+  const wakeT = (typeof krakenWakeT !== 'undefined') ? krakenWakeT : 1;
+  const sleeping = !krakenActive && !krakenDefeated;
   const frozen = krakenDefeated;
-  const eyeOpen = Math.max(0, 1 - sinkT * 2);
+  const sinkT = (typeof krakenSinkT !== 'undefined') ? krakenSinkT : (frozen ? 1 : 0);
+
+  const headPos = getKrakenHeadPos();
+  const headX = headPos.x;
+  const headY = headPos.y;
+
+  let openAmt = 1;
+  if (sleeping) openAmt = 0;
+  else if (frozen) openAmt = Math.max(0, 1 - sinkT * 2);
+  else openAmt = Math.min(1, wakeT);
+
+  let eyeMult = 1;
+  if (typeof krakenBlinkT !== 'undefined' && krakenBlinkT > 0) {
+    eyeMult = Math.abs((krakenBlinkT - 0.15) / 0.15);
+    if (eyeMult > 1) eyeMult = 1;
+  }
+  if (typeof krakenSquintT !== 'undefined' && krakenSquintT > 0) {
+    const squintFactor = 0.4 + 0.6 * (1 - krakenSquintT / 0.8);
+    eyeMult = Math.min(eyeMult, squintFactor);
+  }
+  const eyeHeightMult = openAmt * eyeMult;
+  const breath = sleeping ? (1 + Math.sin(t * 0.9) * 0.03) : 1;
 
   // Тень на дне
   ctx.beginPath();
@@ -996,156 +1063,239 @@ function drawKraken() {
   ctx.fillStyle = 'rgba(0,0,0,0.5)';
   ctx.fill();
 
-  // Свечение вокруг головы
-  const glow = ctx.createRadialGradient(krakenPos.x, headY, 10, krakenPos.x, headY, headR * 3);
-  glow.addColorStop(0, frozen ? 'rgba(100, 180, 220, 0.35)' : 'rgba(180, 30, 60, 0.35)');
-  glow.addColorStop(1, frozen ? 'rgba(60, 100, 140, 0)' : 'rgba(60, 10, 30, 0)');
-  ctx.fillStyle = glow;
-  ctx.beginPath();
-  ctx.arc(krakenPos.x, headY, headR * 3, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Постоянные щупальца снизу (8 штук)
+  // 1. ЩУПАЛЬЦА
   const baseY = headY + headR * 0.6;
+  const headHeightAboveFloor = FLOOR_Y - headY;
+  const spreadFactor = Math.min(1, Math.max(0, headHeightAboveFloor / 400));
+  
   for (let i = 0; i < 8; i++) {
     const ang = Math.PI / 2 + ((i - 3.5) / 3.5) * 1.4;
-    const sway = frozen ? 0 : Math.sin(t * 2 + i) * 15;
-    const len = 200 + (frozen ? 0 : Math.sin(t * 1.5 + i * 0.5) * 40);
-    const ex = krakenPos.x + Math.cos(ang) * len * 0.8 + sway;
+    const still = frozen || sleeping;
+    const sway = still ? 0 : Math.sin(t * 2 + i) * 15;
+    const effLen = 50 + 150 * spreadFactor;
+    const ex = krakenPos.x + Math.cos(ang) * effLen * 0.8 + sway;
     const ey = FLOOR_Y;
-    const cx = krakenPos.x + Math.cos(ang) * len * 0.4;
-    const cy = baseY + len * 0.55;
+    const cx = krakenPos.x + Math.cos(ang) * effLen * 0.4;
+    const cy = baseY + effLen * 0.55;
+
+    let tentacleColor = '#6a1040';
+    let tentacleDark = 'rgba(30, 0, 20, 0.5)';
+    if (frozen) {
+      tentacleColor = '#3a6a90';
+      tentacleDark = 'rgba(20, 40, 60, 0.5)';
+    } else if (sleeping) {
+      tentacleColor = '#4a1838';
+      tentacleDark = 'rgba(20, 0, 15, 0.4)';
+    }
 
     ctx.beginPath();
-    ctx.moveTo(krakenPos.x + Math.cos(ang) * 15, baseY);
+    ctx.moveTo(headX + Math.cos(ang) * 15, baseY);
     ctx.quadraticCurveTo(cx, cy, ex, ey);
-    ctx.strokeStyle = frozen ? '#3a6a90' : '#6a1040';
+    ctx.strokeStyle = tentacleColor;
     ctx.lineWidth = 12 / zoom;
     ctx.lineCap = 'round';
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.moveTo(krakenPos.x + Math.cos(ang) * 15, baseY);
+    ctx.moveTo(headX + Math.cos(ang) * 15, baseY);
     ctx.quadraticCurveTo(cx, cy, ex, ey);
-    ctx.strokeStyle = frozen ? 'rgba(20, 40, 60, 0.5)' : 'rgba(30, 0, 20, 0.5)';
+    ctx.strokeStyle = tentacleDark;
     ctx.lineWidth = 5 / zoom;
     ctx.stroke();
   }
 
-  // Голова
-  const headGrad = ctx.createRadialGradient(
-    krakenPos.x - headR * 0.3, headY - headR * 0.4, 5,
-    krakenPos.x, headY, headR * 1.2
-  );
-  if (frozen) {
-    headGrad.addColorStop(0, '#a8d8f0');
-    headGrad.addColorStop(0.6, '#5a8ab0');
-    headGrad.addColorStop(1, '#1a3a5a');
-  } else if (flash && isIce) {
-    headGrad.addColorStop(0, '#d8f0ff');
-    headGrad.addColorStop(1, '#3a7fb0');
-  } else if (flash) {
-    headGrad.addColorStop(0, '#ffaaaa');
-    headGrad.addColorStop(1, '#cc4444');
-  } else {
-    headGrad.addColorStop(0, '#8a2050');
-    headGrad.addColorStop(0.6, '#4a1028');
-    headGrad.addColorStop(1, '#1a0510');
-  }
-  ctx.beginPath();
-  ctx.ellipse(krakenPos.x, headY, headR, headR * 1.1, 0, 0, Math.PI * 2);
-  ctx.fillStyle = headGrad;
-  ctx.fill();
-  ctx.strokeStyle = frozen ? '#0a1a2a' : '#0a0208';
-  ctx.lineWidth = 3 / zoom;
-  ctx.stroke();
+  // ============================================================
+    // ============================================================
+    // ============================================================
+  // 2. СЛОИ ГОЛОВЫ
+  // ============================================================
+  ctx.save();
+  ctx.translate(headX, headY);
+  ctx.scale(breath, breath);
 
-  // Морозное облако при попадании торпеды
-  if (krakenDamageFlash > 0 && isIce && !frozen) {
-    const iceAlpha = Math.min(1, krakenDamageFlash * 2);
-    const iceGrad = ctx.createRadialGradient(krakenPos.x, headY, headR * 0.5, krakenPos.x, headY, headR * 2);
-    iceGrad.addColorStop(0, `rgba(180, 235, 255, ${0.5 * iceAlpha})`);
-    iceGrad.addColorStop(1, 'rgba(180, 235, 255, 0)');
-    ctx.fillStyle = iceGrad;
-    ctx.beginPath();
-    ctx.arc(krakenPos.x, headY, headR * 2, 0, Math.PI * 2);
-    ctx.fill();
+  const drawW = headR * 2.6; 
+  const drawH = headR * 2.6;
+  const offsetX = -drawW / 2;
+  const offsetY = -drawH / 2;
+
+  // 2.1 Сама голова
+  if (svgKrakenHead.complete && svgKrakenHead.naturalWidth > 0) {
+    // 1. Всегда рисуем нормальную (непрозрачную) голову
+    ctx.drawImage(svgKrakenHead, offsetX, offsetY, drawW, drawH);
+    
+    // 2. Если есть вспышка урона — накладываем цветной слой ПОВЕРХ неё
+    if (flash && !frozen) {
+      drawTintedImage(
+        svgKrakenHead, 
+        offsetX, offsetY, drawW, drawH, 
+        isIce ? 'rgba(200, 240, 255, 0.6)' : 'rgba(255, 100, 100, 0.5)'
+      );
+    }
   }
 
-  // Глаз
-  const eyeR = headR * 0.5;
-  const eyeAng = Math.atan2(sub.y - headY, sub.x - krakenPos.x);
-  const pTrackX = Math.cos(eyeAng) * eyeR * 0.15 * eyeOpen;
-  const pTrackY = Math.sin(eyeAng) * eyeR * 0.15 * eyeOpen;
+  // 2.2 Белок глаза и Зрачки
+  const eyeY = -headR * 0.1;
+  const eyeOffsetX = headR * 0.42;
 
-  if (frozen || eyeOpen > 0.05) {
-    // Белок
-    ctx.beginPath();
-    ctx.arc(krakenPos.x, headY, eyeR, 0, Math.PI * 2);
-    ctx.fillStyle = frozen ? '#c8e8ff' : (flash ? '#ffffff' : '#ffd166');
-    ctx.fill();
-    ctx.strokeStyle = frozen ? '#2a4a6a' : '#000000';
-    ctx.lineWidth = 2 / zoom;
-    ctx.stroke();
+  if (eyeHeightMult > 0.05) {
+    if (svgKrakenEye.complete && svgKrakenEye.naturalWidth > 0) {
+      ctx.drawImage(svgKrakenEye, offsetX, offsetY, drawW, drawH);
+    }
 
-    // Красные прожилки (только пока жив)
-    if (!frozen) {
-      const hpPct = krakenHp / krakenMaxHp;
-      const veinCount = Math.floor((1 - hpPct) * 12);
-      for (let i = 0; i < veinCount; i++) {
-        const angle = (i / veinCount) * Math.PI * 2 + (i % 2 ? 0.4 : 0);
-        const sx = krakenPos.x + Math.cos(angle) * eyeR * 0.88;
-        const sy = headY + Math.sin(angle) * eyeR * 0.88;
-        const ex = krakenPos.x + Math.cos(angle + 0.15) * eyeR * 0.35;
-        const ey = headY + Math.sin(angle + 0.15) * eyeR * 0.35;
-        const mx = (sx + ex) / 2 + Math.sin(i * 2) * 4;
-        const my = (sy + ey) / 2 + Math.cos(i * 2) * 4;
-        ctx.beginPath();
-        ctx.moveTo(sx, sy);
-        ctx.quadraticCurveTo(mx, my, ex, ey);
-        ctx.strokeStyle = `rgba(180, 15, 15, ${0.55 + 0.4 * (1 - hpPct)})`;
-        ctx.lineWidth = (1.2 + (1 - hpPct) * 1.3) / zoom;
-        ctx.stroke();
+    if (svgKrakenPupilLeft.complete && svgKrakenPupilLeft.naturalWidth > 0) {
+      const eyeAngL = Math.atan2(sub.y - (headY + eyeY), sub.x - (headX - eyeOffsetX));
+      const pTrackXL = Math.cos(eyeAngL) * headR * 0.05 * eyeHeightMult;
+      const pTrackYL = Math.sin(eyeAngL) * headR * 0.05 * eyeHeightMult;
+      ctx.drawImage(svgKrakenPupilLeft, offsetX + pTrackXL, offsetY + pTrackYL, drawW, drawH);
+    }
+
+    if (svgKrakenPupilRight.complete && svgKrakenPupilRight.naturalWidth > 0) {
+      const eyeAngR = Math.atan2(sub.y - (headY + eyeY), sub.x - (headX + eyeOffsetX));
+      const pTrackXR = Math.cos(eyeAngR) * headR * 0.05 * eyeHeightMult;
+      const pTrackYR = Math.sin(eyeAngR) * headR * 0.05 * eyeHeightMult;
+      ctx.drawImage(svgKrakenPupilRight, offsetX + pTrackXR, offsetY + pTrackYR, drawW, drawH);
+    }
+  }
+
+  // 2.3 Веки
+  if (svgKrakenEyelid.complete && svgKrakenEyelid.naturalWidth > 0) {
+    const lidShift = (1 - eyeHeightMult) * (headR * 0.15);
+    ctx.drawImage(svgKrakenEyelid, offsetX, offsetY + lidShift, drawW, drawH);
+  }
+
+   // 2.4 Рот с зубами (Всегда почти открыт, чуть расширяется при атаке)
+  if (svgKrakenMouth.complete && svgKrakenMouth.naturalWidth > 0) {
+    
+    let mouthOpen = 0.75; // Базовое состояние — рот приоткрыт на 75%
+    
+    if (frozen) {
+      // При заморозке рот плавно закрывается
+      mouthOpen = 0.75 * Math.max(0, 1 - sinkT * 2);
+    } else if (sleeping) {
+      // Спящий — рот закрыт
+      mouthOpen = 0;
+    } else {
+      // Проснулся — рот приоткрыт
+      const baseMouth = Math.min(1, wakeT) * 0.75;
+      
+      // При атаке — чуть шире (до 100%)
+      let attackMouth = 0;
+      if (typeof krakenSquintT !== 'undefined' && krakenSquintT > 0) {
+        // Плавно от 0.75 до 1.0
+        attackMouth = 0.75 + Math.min(1, krakenSquintT / 0.3) * 0.25;
       }
+      
+      mouthOpen = Math.max(baseMouth, attackMouth);
     }
+    
+    if (mouthOpen > 0.02) {
+      ctx.save();
+      
+      const mouthY_in_SVG = 0.867; 
+      const mouthOffsetY = (mouthY_in_SVG - 0.5) * drawH;
+      ctx.translate(0, mouthOffsetY);
+      
+      // Растяжение всего в 1.33 раза (0.75 → 1.0) — это едва заметно
+      ctx.scale(1, Math.max(0.02, mouthOpen));
+      
+      ctx.drawImage(
+        svgKrakenMouth, 
+        -drawW / 2, 
+        -mouthY_in_SVG * drawH, 
+        drawW, drawH
+      );
+      
+      ctx.restore();
+    }
+  }
 
-    // Зрачок
-    if (eyeOpen > 0.05) {
+    // 2.5 ЛЕДЯНОЙ ПАНЦИРЬ + СФЕРА (при победе)
+  if (frozen) {
+    const iceAlpha = Math.min(1, sinkT * 1.5);
+    
+    // 1. Сначала красим саму голову в ледяной цвет (как раньше)
+    drawTintedImage(svgKrakenHead, offsetX, offsetY, drawW, drawH, `rgba(180, 235, 255, ${0.5 * iceAlpha})`);
+    
+    // 2. Рисуем ледяную сферу вокруг головы (с чётким кантом)
+    if (iceAlpha > 0.05) {
+      const sphereR = headR * 1.4;
+      
+      // --- Заливка сферы (объёмный градиент) ---
+      const sphereGrad = ctx.createRadialGradient(
+        -sphereR * 0.35, -sphereR * 0.35, sphereR * 0.1,  // центр блика (сверху-слева)
+        0, 0, sphereR                                       // внешний радиус
+      );
+      sphereGrad.addColorStop(0, `rgba(230, 250, 255, ${0.2 * iceAlpha})`);
+      sphereGrad.addColorStop(0.6, `rgba(150, 215, 245, ${0.25 * iceAlpha})`);
+      sphereGrad.addColorStop(1, `rgba(90, 170, 210, ${0.45 * iceAlpha})`);
+      
       ctx.beginPath();
-      ctx.arc(krakenPos.x + pTrackX, headY + pTrackY, eyeR * 0.6 * eyeOpen, 0, Math.PI * 2);
-      ctx.fillStyle = frozen ? '#4a7aa0' : '#ff4400';
+      ctx.arc(0, 0, sphereR, 0, Math.PI * 2);
+      ctx.fillStyle = sphereGrad;
       ctx.fill();
-
+      
+      // --- Чёткий внешний кант (белый) ---
       ctx.beginPath();
-      ctx.arc(krakenPos.x + pTrackX, headY + pTrackY, eyeR * 0.35 * eyeOpen, 0, Math.PI * 2);
-      ctx.fillStyle = '#000000';
+      ctx.arc(0, 0, sphereR, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255, 255, 255, ${0.9 * iceAlpha})`;
+      ctx.lineWidth = 4 / zoom;
+      ctx.stroke();
+      
+      // --- Внутренний голубой кант (для объёма) ---
+      ctx.beginPath();
+      ctx.arc(0, 0, sphereR * 0.92, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(150, 225, 255, ${0.55 * iceAlpha})`;
+      ctx.lineWidth = 2 / zoom;
+      ctx.stroke();
+      
+      // --- Блик сверху-слева (эффект стекла/льда) ---
+      const hlGrad = ctx.createRadialGradient(
+        -sphereR * 0.45, -sphereR * 0.45, 1,
+        -sphereR * 0.45, -sphereR * 0.45, sphereR * 0.45
+      );
+      hlGrad.addColorStop(0, `rgba(255, 255, 255, ${0.65 * iceAlpha})`);
+      hlGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      
+      ctx.beginPath();
+      ctx.arc(-sphereR * 0.45, -sphereR * 0.45, sphereR * 0.45, 0, Math.PI * 2);
+      ctx.fillStyle = hlGrad;
       ctx.fill();
-
+      
+      // --- Маленький блик внизу-справа (контровой) ---
+      const hl2Grad = ctx.createRadialGradient(
+        sphereR * 0.5, sphereR * 0.5, 1,
+        sphereR * 0.5, sphereR * 0.5, sphereR * 0.25
+      );
+      hl2Grad.addColorStop(0, `rgba(200, 240, 255, ${0.4 * iceAlpha})`);
+      hl2Grad.addColorStop(1, 'rgba(200, 240, 255, 0)');
+      
       ctx.beginPath();
-      ctx.arc(krakenPos.x + pTrackX - eyeR * 0.15 * eyeOpen, headY + pTrackY - eyeR * 0.15 * eyeOpen, eyeR * 0.1 * eyeOpen, 0, Math.PI * 2);
-      ctx.fillStyle = '#ffffff';
+      ctx.arc(sphereR * 0.5, sphereR * 0.5, sphereR * 0.25, 0, Math.PI * 2);
+      ctx.fillStyle = hl2Grad;
       ctx.fill();
     }
   }
 
-  // Закрытый глаз + ледяной панцирь (заморожен)
-  if (frozen) {
-    ctx.beginPath();
-    ctx.moveTo(krakenPos.x - eyeR * 0.8, headY);
-    ctx.quadraticCurveTo(krakenPos.x, headY + eyeR * 0.5, krakenPos.x + eyeR * 0.8, headY);
-    ctx.strokeStyle = '#1a3a5a';
-    ctx.lineWidth = 3 / zoom;
-    ctx.lineCap = 'round';
-    ctx.stroke();
+  ctx.restore(); // Конец отрисовки головы
 
-    const iceAlpha = Math.min(1, sinkT * 1.5);
-    ctx.beginPath();
-    ctx.ellipse(krakenPos.x, headY, headR * 1.15, headR * 1.25, 0, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(180, 235, 255, ${0.25 * iceAlpha})`;
-    ctx.fill();
-    ctx.strokeStyle = `rgba(255, 255, 255, ${0.6 * iceAlpha})`;
-    ctx.lineWidth = 2 / zoom;
-    ctx.stroke();
+ 
+
+
+
+  // Zzz над спящим
+  if (sleeping) {
+    for (let i = 0; i < 3; i++) {
+      const zt = (t * 0.55 + i * 0.85) % 2.5;
+      if (zt > 2.3) continue;
+      const zx = headX + headR * 0.8 + Math.sin(t * 1.3 + i * 2) * 18;
+      const zy = headY - headR * 1.1 - zt * 55;
+      const zAlpha = Math.max(0, 1 - zt / 2.3);
+      ctx.font = `bold ${Math.round(headR * 0.18 + i * headR * 0.05)}px monospace`;
+      ctx.fillStyle = `rgba(127, 214, 255, ${zAlpha * 0.85})`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('z', zx, zy);
+    }
   }
 }
 
@@ -1218,23 +1368,56 @@ function drawInkCloud(c) {
 }
 function drawTentacleWarning(w) {
   const k = w.life / w.delay;
-  const pulse = 0.4 + Math.sin(w.life * 20) * 0.3;
+  const baseY = FLOOR_Y - 4;
 
-  // Круги-волны на полу
-  for (let i = 0; i < 3; i++) {
-    const r = 20 + k * 60 + i * 15;
+  // 1. Зона опасности на полу (пульсирующая)
+  const zoneR = 22 + k * 42;
+  ctx.beginPath();
+  ctx.ellipse(w.x, baseY, zoneR, zoneR * 0.3, 0, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(255, 60, 60, ${0.25 + Math.sin(w.life * 30) * 0.15})`;
+  ctx.fill();
+  ctx.strokeStyle = `rgba(255, 100, 100, ${0.75 * (1 - k * 0.3)})`;
+  ctx.lineWidth = 3 / zoom;
+  ctx.stroke();
+
+  // 2. Сгусток пузырьков летит вверх
+  const clumpY = baseY - k * 480;
+  for (let i = 0; i < 10; i++) {
+    const offX = Math.sin(i * 7.3 + w.life * 15) * 22;
+    const offY = Math.cos(i * 7.3) * 12;
+    const bx = w.x + offX;
+    const by = clumpY + offY;
+    const br = 5 + Math.sin(i * 1.7 + w.life * 20) * 2;
+    const alpha = (0.95 - k * 0.4);
+
+    const bgrad = ctx.createRadialGradient(bx - br * 0.3, by - br * 0.3, 1, bx, by, br);
+    bgrad.addColorStop(0, `rgba(230, 248, 255, ${alpha})`);
+    bgrad.addColorStop(0.7, `rgba(140, 210, 240, ${alpha * 0.8})`);
+    bgrad.addColorStop(1, `rgba(80, 160, 200, ${alpha * 0.4})`);
     ctx.beginPath();
-    ctx.ellipse(w.x, FLOOR_Y - 4, r, r * 0.25, 0, 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(255, 100, 100, ${(1 - k) * 0.7})`;
-    ctx.lineWidth = 3 / zoom;
+    ctx.arc(bx, by, br, 0, Math.PI * 2);
+    ctx.fillStyle = bgrad;
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+    ctx.lineWidth = 1 / zoom;
     ctx.stroke();
   }
 
-  // Красная точка-центр
-  ctx.beginPath();
-  ctx.ellipse(w.x, FLOOR_Y - 4, 12, 4, 0, 0, Math.PI * 2);
-  ctx.fillStyle = `rgba(255, 60, 60, ${pulse})`;
-  ctx.fill();
+  // 3. Пузырьковый хвост внизу
+  for (let i = 0; i < 6; i++) {
+    const trailY = clumpY + 40 + i * 22;
+    if (trailY > baseY) continue;
+    const bx = w.x + Math.sin(i * 3.3 + w.life * 12) * 18;
+    const br = 4 - i * 0.4;
+    const alpha = (0.7 - i * 0.08) * (0.95 - k * 0.4);
+    ctx.beginPath();
+    ctx.arc(bx, trailY, br, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(180, 235, 255, ${alpha})`;
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255, 255, 255, ${alpha * 0.7})`;
+    ctx.lineWidth = 0.8 / zoom;
+    ctx.stroke();
+  }
 }
 
 // ================================================================

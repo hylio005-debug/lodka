@@ -131,10 +131,16 @@ function togglePause() {
   paused = !paused;
   el('pauseOverlay').classList.toggle('show', paused);
   if (paused) {
-    if (menuMusic) menuMusic.pause();
-    if (gameMusic) gameMusic.pause();
+    if (musicEnabled && typeof menuMusic !== 'undefined') menuMusic.pause();
+    if (musicEnabled && typeof gameMusic !== 'undefined') gameMusic.pause();
     stopMotor();
-    updateArtifactUI(); // Обновляем кнопки артефактов
+    updateArtifactUI();
+    
+    // Сбрасываем нажатия, чтобы лодка не поплыла сама после паузы
+    mouse.down = false;
+    mouse.rightDown = false;
+    if (typeof thrust !== 'undefined') thrust.pressed = false;
+    if (typeof winchState !== 'undefined') winchState = 'idle'; // Сбрасываем лебедку
   } else if (musicEnabled) {
     switchMusic('game');
   }
