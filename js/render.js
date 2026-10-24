@@ -2,10 +2,6 @@
 //  js/render.js — ОТРИСОВКА
 // ================================================================
 
-// ================================================================
-//  js/render.js — ОТРИСОВКА
-// ================================================================
-
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d', { alpha: false });
 
@@ -14,7 +10,7 @@ const lightCanvas = document.createElement('canvas');
 const lightCtx = lightCanvas.getContext('2d');
 
 // ================================================================
-// ЗАГРУЗКА ВСЕХ СЛОЕВ КРАКЕНА ИЗ SVG
+// ЗАГРУЗКА ВСЕХ СЛОЕВ КРАКЕНА ИЗ SVG (ДЛЯ ОТРИСОВКИ)
 // ================================================================
 const svgKrakenHead = new Image();
 svgKrakenHead.src = 'assets/boss/kraken/kraken-head.svg';
@@ -33,6 +29,46 @@ svgKrakenEyelid.src = 'assets/boss/kraken/kraken-eyelid.svg';
 
 const svgKrakenMouth = new Image();
 svgKrakenMouth.src = 'assets/boss/kraken/kraken-mouth.svg';
+
+// ================================================================
+// ЗАГРУЗКА Path2D ДЛЯ ТОЧНЫХ КОЛЛИЗИЙ
+// ================================================================
+let krakenHeadPath2D = null;
+let krakenSvgSize = 400;
+
+fetch('assets/boss/kraken/kraken-head.svg')
+  .then(r => r.text())
+  .then(text => {
+    const vbMatch = text.match(/viewBox="([^"]+)"/);
+    if (vbMatch) {
+      const parts = vbMatch[1].trim().split(/\s+/).map(Number);
+      if (parts.length === 4 && parts[2] > 0) krakenSvgSize = parts[2];
+    }
+    const pathMatches = [...text.matchAll(/<path[^>]*?\sd="([^"]+)"/g)];
+    if (pathMatches.length > 0) {
+      krakenHeadPath2D = new Path2D();
+      pathMatches.forEach(m => krakenHeadPath2D.addPath(new Path2D(m[1])));
+      console.log(`✅ Path2D головы загружен (viewBox: ${krakenSvgSize})`);
+    }
+  })
+  .catch(err => console.warn('❌ Не удалось загрузить Path2D:', err));
+
+const _hitTestCanvas = document.createElement('canvas');
+_hitTestCanvas.width = 1;
+_hitTestCanvas.height = 1;
+const _hitTestCtx = _hitTestCanvas.getContext('2d');
+
+function isPointInKraken(worldX, worldY) {
+  if (!krakenHeadPath2D) return false;
+  const headPos = getKrakenHeadPos();
+  const headR = krakenPos.r;
+  const drawW = headR * 2.6;
+  const scale = drawW / krakenSvgSize;
+  const offset = krakenSvgSize / 2;
+  const localX = (worldX - headPos.x) / scale + offset;
+  const localY = (worldY - headPos.y) / scale + offset;
+  return _hitTestCtx.isPointInPath(krakenHeadPath2D, localX, localY);
+}
 
 // ================================================================
 function updateZoom() {

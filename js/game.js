@@ -304,16 +304,24 @@ function fireWinch() {
   let targetY = rawY;
   let hitBoss = false;
 
-  // Ищем стену и Кракена по пути
+   // Ищем стену и Кракена по пути
   const wallHit = raycastWall(sub.x, sub.y, rawX, rawY, 5);
   let bossHit = null;
   if (currentLevelData && currentLevelData.boss === 'kraken' && !krakenDefeated) {
-    const _kHead = getKrakenHeadPos();
-    bossHit = raycastBoss(sub.x, sub.y, rawX, rawY, {
-      x: _kHead.x,
-      y: _kHead.y,
-      r: krakenPos.r
-    });
+    if (typeof isPointInKraken === 'function') {
+      const dxr = rawX - sub.x, dyr = rawY - sub.y;
+      const lenr = Math.hypot(dxr, dyr);
+      const steps = Math.ceil(lenr / 6);
+      for (let i = 1; i <= steps; i++) {
+        const tt = i / steps;
+        const px = sub.x + dxr * tt;
+        const py = sub.y + dyr * tt;
+        if (isPointInKraken(px, py)) {
+          bossHit = { x: px, y: py, t: tt };
+          break;
+        }
+      }
+    }
   }
 
   // Берём то, что ближе
@@ -746,11 +754,9 @@ function update(dt) {
       }
     }
     // Попадание в Кракена
+    // Попадание в Кракена (точный SVG-хитбокс)
     if (!hitSomething && currentLevelData && currentLevelData.boss === 'kraken' && !krakenDefeated) {
-      const kHead = getKrakenHeadPos();
-      const kdx = t.x - kHead.x;
-      const kdy = t.y - kHead.y;
-      if (kdx*kdx + kdy*kdy < krakenPos.r * krakenPos.r) {
+      if (typeof isPointInKraken === 'function' && isPointInKraken(t.x, t.y)) {
         krakenHp = Math.max(0, krakenHp - 25);
         krakenDamageFlash = 0.3;
         krakenFlashType = 'ice';
@@ -759,7 +765,7 @@ function update(dt) {
         if (!krakenActive) {
           krakenActive = true;
           showToast('🐙 КРАКЕН ПРОБУДИЛСЯ!');
-              playBossMusic();
+          playBossMusic();
         }
       }
     }
@@ -1513,12 +1519,24 @@ function updateKraken(dt) {
     }
   }
 
-  // Таран в тело Кракена
+  // Таран в тело Кракена (точный SVG-хитбокс)
   const kHead = getKrakenHeadPos();
   const kdx = sub.x - kHead.x;
   const kdy = sub.y - kHead.y;
   const kdist = Math.hypot(kdx, kdy);
-  if (kdist < krakenPos.r + sub.r && sub.invuln <= 0) {
+  
+  let isRamHit = false;
+  if (typeof isPointInKraken === 'function') {
+    // Проверяем центр лодки и её нос
+    const p1 = isPointInKraken(sub.x, sub.y);
+    const p2 = isPointInKraken(sub.x + Math.cos(sub.angle) * sub.r, sub.y + Math.sin(sub.angle) * sub.r);
+    if (p1 || p2) isRamHit = true;
+  } else {
+    // Запасной вариант, если SVG не загрузился
+    isRamHit = (kdist < krakenPos.r + sub.r);
+  }
+
+  if (isRamHit && sub.invuln <= 0) {
     krakenHp = Math.max(0, krakenHp - 10);
     krakenDamageFlash = 0.2;
     krakenFlashType = 'physical';
