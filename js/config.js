@@ -3,7 +3,41 @@
 //  Игра «Погружение» v4.2
 // ================================================================
 
-const GAME_VERSION = '4.2';
+// ================================================================
+//  js/config.js — КОНСТАНТЫ И НАСТРОЙКИ
+// ================================================================
+
+// 🔥 ЕДИНАЯ ВЕРСИЯ ИГРЫ — меняй ТОЛЬКО здесь!
+const GAME_VERSION = '4.2.2';
+const GAME_CODENAME = 'SVG КРАКЕН моного HP';  // подзаголовок на заставке
+const GAME_TITLE = 'Погружение';
+
+// ================================================================
+//  АВТООБНОВЛЕНИЕ ВЕРСИИ В ИНТЕРФЕЙСЕ
+//  (не трогай, это просто применяет GAME_VERSION везде)
+// ================================================================
+function applyVersionToUI() {
+  // 1. Заголовок вкладки
+  document.title = `${GAME_TITLE} (v${GAME_VERSION})`;
+
+  // 2. Плашка на заставке
+  const badge = document.querySelector('.version-badge');
+  if (badge) {
+    badge.textContent = `ВЕРСИЯ ${GAME_VERSION} — ${GAME_CODENAME}`;
+  }
+
+  // 3. Поле в экране «Параметры»
+  const opt = document.getElementById('opt-version');
+  if (opt) opt.textContent = GAME_VERSION;
+
+  console.log(`🎮 ${GAME_TITLE} v${GAME_VERSION} — ${GAME_CODENAME}`);
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', applyVersionToUI);
+} else {
+  applyVersionToUI();
+}
 const SERVER_URL = 'https://lodka777.online/api.php';
 
 const UNLOCK_THRESHOLD = 80;
@@ -137,8 +171,8 @@ const TORPEDO_SPEED = 400;
 // ---------- КРАКЕН (БОСС 5-го УРОВНЯ) ----------
 let krakenActive = false;
 let krakenDefeated = false;
-let krakenHp = 100;
-let krakenMaxHp = 100;
+let krakenHp = 300;
+let krakenMaxHp = 300;
 let krakenPhase = 1;
 let krakenAttackTimer = 0;
 let krakenInkTimer = 0;
