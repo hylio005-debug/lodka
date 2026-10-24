@@ -431,8 +431,8 @@ function prepareRun() {
 
   krakenActive = false;
   krakenDefeated = false;
-  krakenHp = 100;
-  krakenMaxHp = 100;
+  krakenHp = 300;
+  krakenMaxHp = 300;
   krakenPhase = 1;
   krakenAttackTimer = 0;
   krakenInkTimer = 0;
