@@ -15,6 +15,8 @@ const screens = {
   leaderboard: el('screen-leaderboard'),
   artifact:    el('screen-artifact'),
   fail:        el('screen-fail'),
+  ending:      el('screen-ending'),
+  multiplayer: el('screen-multiplayer'),
 };
 
 const hudEls = [

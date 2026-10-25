@@ -8,8 +8,8 @@
 // ================================================================
 
 // 🔥 ЕДИНАЯ ВЕРСИЯ ИГРЫ — меняй ТОЛЬКО здесь!
-const GAME_VERSION = '4.2.3';
-const GAME_CODENAME = 'КРАКЕН моного HP колизии';  // подзаголовок на заставке
+const GAME_VERSION = '5.0';
+const GAME_CODENAME = 'PvP';  // подзаголовок на заставке
 const GAME_TITLE = 'Погружение';
 
 // ================================================================
@@ -30,6 +30,12 @@ function applyVersionToUI() {
   const opt = document.getElementById('opt-version');
   if (opt) opt.textContent = GAME_VERSION;
 
+  // 4. НОВОЕ: Версия на экране Финала
+  const endingVersion = document.getElementById('ending-version');
+  if (endingVersion) {
+    endingVersion.textContent = `Погружение v${GAME_VERSION} · Спасибо за игру!`;
+  }
+
   console.log(`🎮 ${GAME_TITLE} v${GAME_VERSION} — ${GAME_CODENAME}`);
 }
 
@@ -47,8 +53,8 @@ const FALL_SPEED = 70;
 
 // Настройки прожектора
 const MAX_ENERGY = 100;
-const ENERGY_DRAIN = 15;     // Тратится в секунду при включении
-const ENERGY_REGEN = 5;      // Восстанавливается в секунду при выключении
+const ENERGY_DRAIN = 5;      // Тратится в 3 раза медленнее
+const ENERGY_REGEN = 5;      
 
 const TARGET_VIEW_WIDTH_DESKTOP = 1100;
 const TARGET_VIEW_WIDTH_MOBILE = 650;
@@ -235,6 +241,11 @@ let levelFloorTopColor = '#6b8e5a';
 let levelHillColor = '#3f6039';
 let levelWaterTint = 'rgba(100, 180, 255, 0.04)';
 let levelIsDark = false; // Для 4-го уровня
+
+//pvp HP
+let pvpHp = 100;
+let pvpOpponentHp = 100;
+
 
 const camera = { x: 0, y: 0 };
 let W = 0;

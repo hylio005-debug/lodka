@@ -24,8 +24,8 @@ svgKrakenPupilLeft.src = 'assets/boss/kraken/kraken-pupil-left.svg';
 const svgKrakenPupilRight = new Image();
 svgKrakenPupilRight.src = 'assets/boss/kraken/kraken-pupil-right.svg';
 
-const svgKrakenEyelid = new Image();
-svgKrakenEyelid.src = 'assets/boss/kraken/kraken-eyelid.svg';
+//const svgKrakenEyelid = new Image();
+//svgKrakenEyelid.src = 'assets/boss/kraken/kraken-eyelid.svg';
 
 const svgKrakenMouth = new Image();
 svgKrakenMouth.src = 'assets/boss/kraken/kraken-mouth.svg';
@@ -160,6 +160,27 @@ function draw() {
     if (t.x < vL - 50 || t.x > vR + 50) continue;
     drawTorpedo(t);
   }
+    // Снаряды врага
+  if (currentLevel === 'PVP' && typeof remoteTorpedoes !== 'undefined') {
+    for (const t of remoteTorpedoes) {
+      if (t.x < vL - 50 || t.x > vR + 50) continue;
+      // Рисуем снаряды врага красным цветом
+      ctx.save();
+      ctx.translate(t.x, t.y);
+      ctx.rotate(t.angle);
+      ctx.beginPath();
+      ctx.moveTo(8, 0);
+      ctx.lineTo(-6, -3);
+      ctx.lineTo(-6, 3);
+      ctx.closePath();
+      ctx.fillStyle = '#ff4444'; // Красный
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
 
   if (winchState !== 'idle') {
     drawWinch();
@@ -182,15 +203,106 @@ function draw() {
     for (const t of tentacles) drawTentacle(t);
   }
 
+  // ============================================================
+  // PVP: HP-БАРЫ
+  // ============================================================
+  // ============================================================
+  // ============================================================
+  // PVP: HP-БАРЫ
+  // ============================================================
+  if (currentLevel === 'PVP') {
+    // Твой HP
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(sub.x - 30, sub.y - 40, 60, 8);
+    ctx.fillStyle = '#6ee787';
+    ctx.fillRect(sub.x - 30, sub.y - 40, 60 * (Math.max(0, sub.hp) / MAX_HP), 8);
+  }
+  
   drawSub();
+
+  // ============================================================
+  // НАВИГАЦИОННАЯ СТРЕЛКА (для тренировочных уровней)
+  // ============================================================
+  if (String(currentLevel).startsWith('T')) {
+    let targetX, targetY, targetColor;
+    
+    // Определяем цель: кольцо или финиш
+    if (levelType === 'rings' && currentRingIndex < rings.length) {
+      targetX = rings[currentRingIndex].x;
+      targetY = rings[currentRingIndex].y;
+      targetColor = '#ffd166'; // Желтый для колец
+    } else {
+      targetX = finish.x;
+      targetY = finish.y;
+      targetColor = '#6ee787'; // Зеленый для финиша
+    }
+    
+    const dx = targetX - sub.x;
+    const dy = targetY - sub.y;
+    const dist = Math.hypot(dx, dy);
+    const angle = Math.atan2(dy, dx);
+
+    // Показываем стрелку, только если до цели больше 100 пикселей
+    // (чтобы она не мешала, когда ты уже в кольце)
+    if (dist > 100) {
+      ctx.save();
+      ctx.translate(sub.x, sub.y);
+      ctx.rotate(angle);
+      
+      // Пульсация (стрелка немного двигается вперед-назад)
+      const pulse = 1 + Math.sin(sub.animTime * 6) * 0.15;
+      const arrowDist = 55 * pulse; // <--- УМЕНЬШИЛИ РАССТОЯНИЕ (было 55)
+      
+      ctx.translate(arrowDist, 0);
+      
+      // Свечение вокруг стрелки
+      const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 15); // <--- УМЕНЬШИЛИ СВЕЧЕНИЕ (было 25)
+      glow.addColorStop(0, targetColor);
+      glow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(0, 0, 15, 0, Math.PI * 2); // <--- УМЕНЬШИЛИ РАДИУС (было 25)
+      ctx.fill();
+
+      // Сама стрелка (треугольник) — сделали меньше
+      ctx.beginPath();
+      ctx.moveTo(9, 0);     // <--- БЫЛО 14
+      ctx.lineTo(-5, -6);   // <--- БЫЛО -8, -10
+      ctx.lineTo(-2, 0);    // <--- БЫЛО -4, 0
+      ctx.lineTo(-5, 6);    // <--- БЫЛО -8, 10
+      ctx.closePath();
+      
+      ctx.fillStyle = targetColor;
+      ctx.fill();
+      ctx.strokeStyle = '#0b1a2a';
+      ctx.lineWidth = 2 / zoom;
+      ctx.stroke();
+      
+      ctx.restore();
+    }
+  }
+  // ============================================================
+
+  // Рисуем соперника (если PvP)
+  if (currentLevel === 'PVP' && typeof opponentPos !== 'undefined' && opponentPos.visible) {
+    drawOpponent(opponentPos);
+  }
+
 
   ctx.restore();
 
   // 4. Накладываем свет (если уровень темный)
+  // 4. Освещение / темнота
   if (levelIsDark) {
     drawDarkness();
   }
 
+  // Прожектор виден на ВСЕХ уровнях (даже светлых)
+  if (flashlightOn && !levelIsDark) {
+    drawFlashlightCone();
+  }
+
+  // Чернила Кракена (затемняют весь экран, прожектор их «прожигает»)
   if (sub.inkBlind > 0) {
     drawInkBlindness();
   }
@@ -200,23 +312,92 @@ function draw() {
     drawMinimap();
   }
 }
+// ================================================================
+//  ЛУЧ ПРОЖЕКТОРА (работает на ВСЕХ уровнях)
+// ================================================================
+function drawFlashlightCone() {
+  const sx = (sub.x - camera.x) * zoom;
+  const sy = (sub.y - camera.y) * zoom;
+  const coneLen = 600 * zoom;
+  const coneAngle = 0.5;
+  const dir = sub.angle;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen'; // Свет «складывается» с картинкой
+
+  const coneGrad = ctx.createRadialGradient(sx, sy, 20, sx, sy, coneLen);
+  coneGrad.addColorStop(0, 'rgba(255, 255, 240, 0.7)');   // Яркий центр
+  coneGrad.addColorStop(0.4, 'rgba(255, 230, 160, 0.35)'); // Тёплый жёлтый
+  coneGrad.addColorStop(1, 'rgba(255, 220, 150, 0)');      // Растворяется
+
+  ctx.fillStyle = coneGrad;
+  ctx.beginPath();
+  ctx.moveTo(sx, sy);
+  ctx.arc(sx, sy, coneLen, dir - coneAngle, dir + coneAngle);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+}
 
 function drawInkBlindness() {
   const alpha = Math.min(1, sub.inkBlind / 1.2);
   if (alpha <= 0) return;
 
-  // Одна тёмная заливка
-  ctx.fillStyle = `rgba(6, 3, 15, ${0.5 * alpha})`;
-  ctx.fillRect(0, 0, W, H);
+  // ============================================================
+  // 1. Строим карту света на скрытом холсте (как в примере)
+  // ============================================================
+  lightCtx.clearRect(0, 0, W, H);
+  lightCtx.fillStyle = '#050308'; // Очень тёмный цвет чернил
+  lightCtx.fillRect(0, 0, W, H);
 
-  // Виньетка (один градиент вместо пяти)
-  const cx = W / 2, cy = H / 2;
-  const maxR = Math.max(W, H) * 0.8;
-  const grad = ctx.createRadialGradient(cx, cy, maxR * 0.25, cx, cy, maxR);
-  grad.addColorStop(0, 'rgba(10, 5, 20, 0)');
-  grad.addColorStop(1, `rgba(3, 1, 8, ${0.75 * alpha})`);
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, H);
+  // Режим "screen" — свет складывается, пробивая тьму
+  lightCtx.globalCompositeOperation = 'screen';
+
+  const sx = (sub.x - camera.x) * zoom;
+  const sy = (sub.y - camera.y) * zoom;
+
+  // 2. Аура вокруг лодки (чтобы всегда видеть, где ты)
+  const auraR = 110 * zoom;
+  const auraGrad = lightCtx.createRadialGradient(sx, sy, 0, sx, sy, auraR);
+  auraGrad.addColorStop(0, 'rgba(140, 180, 220, 0.55)');
+  auraGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  lightCtx.fillStyle = auraGrad;
+  lightCtx.beginPath();
+  lightCtx.arc(sx, sy, auraR, 0, Math.PI * 2);
+  lightCtx.fill();
+
+  // 3. Конус фонарика (если включён) — пробивает тьму
+  if (flashlightOn) {
+    const coneLen = 700 * zoom;
+    const coneAngle = 0.55;
+    const dir = sub.angle;
+
+    const coneGrad = lightCtx.createRadialGradient(sx, sy, 20, sx, sy, coneLen);
+    coneGrad.addColorStop(0, 'rgba(255, 255, 240, 1.0)');   // Яркий центр
+    coneGrad.addColorStop(0.4, 'rgba(255, 240, 180, 0.75)'); // Тёплый свет
+    coneGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');            // Растворяется
+
+    lightCtx.fillStyle = coneGrad;
+    lightCtx.beginPath();
+    lightCtx.moveTo(sx, sy);
+    lightCtx.arc(sx, sy, coneLen, dir - coneAngle, dir + coneAngle);
+    lightCtx.closePath();
+    lightCtx.fill();
+  }
+
+  // Сбрасываем режим
+  lightCtx.globalCompositeOperation = 'source-over';
+
+  // ============================================================
+  // 4. Накладываем карту света на игру через multiply
+  //    (как в примере)
+  // ============================================================
+  ctx.save();
+  ctx.globalAlpha = alpha; // Плавное проявление/затухание чернил
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.drawImage(lightCanvas, 0, 0);
+  ctx.restore();
 }
 
 
@@ -267,7 +448,30 @@ function drawDarkness() {
     lightCtx.closePath();
     lightCtx.fill();
   }
-  
+    // 6. Свечение удильщиков в темноте (чтобы их было видно)
+  for (const f of fishes) {
+    if (f.type === 'angler' && f.frozen <= 0) {
+      const dir = f.dir >= 0 ? 1 : -1;
+      // Переводим мировые координаты приманки в экранные
+      const lx = (f.x + dir * f.r * 0.9 - camera.x) * zoom;
+      const ly = (f.y - f.r * 2.0 - camera.y) * zoom;
+      const glowR = 60 * zoom; // Радиус свечения
+
+      // Не рисуем, если рыба за экраном
+      if (lx < -glowR || lx > W + glowR || ly < -glowR || ly > H + glowR) continue;
+
+      // Рисуем мягкое желтое свечение
+      const lureGlow = lightCtx.createRadialGradient(lx, ly, 0, lx, ly, glowR);
+      lureGlow.addColorStop(0, 'rgba(255, 240, 180, 0.7)'); // Яркий центр
+      lureGlow.addColorStop(0.4, 'rgba(255, 220, 130, 0.3)');
+      lureGlow.addColorStop(1, 'rgba(255, 220, 130, 0)');
+      
+      lightCtx.fillStyle = lureGlow;
+      lightCtx.beginPath();
+      lightCtx.arc(lx, ly, glowR, 0, Math.PI * 2);
+      lightCtx.fill();
+    }
+  }
   // Сбрасываем режим
   lightCtx.globalCompositeOperation = 'source-over';
   
@@ -1499,4 +1703,84 @@ function drawMayanGlyphToCtx(c, x, y, size, seed) {
     c.arc(x + (r3 - 0.5) * size * 0.3, y + (r2 - 0.5) * size * 0.3, size * 0.05, 0, Math.PI * 2);
     c.fill();
   }
+}
+
+
+
+function drawOpponent(pos) {
+  ctx.save();
+  ctx.translate(pos.x, pos.y);
+
+  // 1. Рисуем HP-бар (ДО поворота, чтобы он всегда был горизонтальным)
+  if (typeof opponentTarget !== 'undefined') {
+    const oHp = opponentTarget.hp;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(-30, -40, 60, 8);
+    ctx.fillStyle = '#ff4444';
+    ctx.fillRect(-30, -40, 60 * (Math.max(0, oHp) / MAX_HP), 8);
+  }
+
+  // 2. Теперь поворачиваем контекст для отрисовки самой лодки
+  ctx.rotate(pos.angle);
+
+  // Тень
+  ctx.beginPath();
+  ctx.ellipse(0, sub.r * 0.6, sub.r * 1.6, sub.r * 0.4, 0, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fill();
+
+  // Пропеллер (вращается)
+  ctx.save();
+  ctx.translate(-sub.r * 1.7, 0);
+  ctx.rotate(pos.propellerAngle || 0);
+  ctx.fillStyle = '#ffa0a0'; // Светло-красный
+  for (let i = 0; i < 3; i++) {
+    ctx.rotate((Math.PI * 2) / 3);
+    ctx.beginPath();
+    ctx.ellipse(sub.r * 0.5, 0, sub.r * 0.45, sub.r * 0.15, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // Хвостовая часть
+  ctx.beginPath();
+  ctx.moveTo(-sub.r * 1.5, 0);
+  ctx.lineTo(-sub.r * 1.2, -sub.r * 0.5);
+  ctx.lineTo(-sub.r * 1.2, sub.r * 0.5);
+  ctx.closePath();
+  ctx.fillStyle = '#cc3333';
+  ctx.fill();
+
+  // Корпус
+  const bg = ctx.createLinearGradient(0, -sub.r, 0, sub.r);
+  bg.addColorStop(0, '#ff8a8a');
+  bg.addColorStop(0.5, '#ff4444');
+  bg.addColorStop(1, '#cc2222');
+  ctx.beginPath();
+  ctx.ellipse(0, 0, sub.r * 1.5, sub.r * 0.85, 0, 0, Math.PI * 2);
+  ctx.fillStyle = bg;
+  ctx.fill();
+  ctx.strokeStyle = '#0b1a2a';
+  ctx.lineWidth = 2 / zoom;
+  ctx.stroke();
+
+  // Иллюминатор
+  ctx.beginPath();
+  ctx.arc(sub.r * 0.25, 0, sub.r * 0.45, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(11, 26, 42, 0.75)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255, 160, 160, 0.7)';
+  ctx.lineWidth = 1.2 / zoom;
+  ctx.stroke();
+
+  // Нос
+  ctx.beginPath();
+  ctx.moveTo(sub.r * 1.5, 0);
+  ctx.lineTo(sub.r * 1.1, -sub.r * 0.4);
+  ctx.lineTo(sub.r * 1.1, sub.r * 0.4);
+  ctx.closePath();
+  ctx.fillStyle = '#ffe0e0';
+  ctx.fill();
+
+  ctx.restore();
 }

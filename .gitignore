@@ -1,0 +1,19 @@
+# Зависимости Node.js
+node_modules/
+
+# Переменные окружения и секреты
+.env
+.env.local
+
+# Логи
+*.log
+npm-debug.log*
+
+# Системные файлы ОС
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Настройки редакторов
+.vscode/
+.idea/

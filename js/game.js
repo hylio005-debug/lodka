@@ -270,10 +270,18 @@ function updateWorldFromLevel(data) {
     });
   });
 
-  sub.x = data.start ? data.start.x : 100;
-  sub.y = data.start ? data.start.y : 980;
+  // Выбираем старт в зависимости от того, кто мы
+  if (currentLevel === 'PVP' && typeof amIPlayer1 !== 'undefined' && !amIPlayer1 && data.start2) {
+    sub.x = data.start2.x;
+    sub.y = data.start2.y;
+    sub.angle = Math.PI; // Смотрим влево
+  } else {
+    sub.x = data.start ? data.start.x : 100;
+    sub.y = data.start ? data.start.y : 980;
+    sub.angle = 0;
+  }
   sub.vx = 0; sub.vy = 0;
-  sub.angle = 0; sub.angVel = 0;
+  sub.angVel = 0;
   sub.hp = MAX_HP; sub.invuln = 0;
   sub.animTime = 0; sub.propellerAngle = 0; sub.bubbleTimer = 0;
 
@@ -377,6 +385,12 @@ function fireTorpedo() {
   soundRing();
   lastFirePos = { x: sub.x, y: sub.y };
   lastFireTime = elapsed;
+
+  // Отправка выстрела по сети
+  if (currentLevel === 'PVP' && typeof mpSendShoot === 'function' && myRoomCode) {
+    console.log('📡 1. КЛИЕНТ ОТПРАВИЛ ВЫСТРЕЛ НА СЕРВЕР');
+    mpSendShoot(sub.x + fx * 20, sub.y + fy * 20, fx * TORPEDO_SPEED, fy * TORPEDO_SPEED, sub.angle);
+  }
 }
 
 // ---------- Запуск уровня ----------
@@ -483,6 +497,12 @@ function prepareRun() {
   isWaiting = true;
   const sh = el('startHint');
   if (sh) sh.classList.remove('hidden');
+
+  // ⚡ ДЛЯ PVP СТАРТУЕМ СРАЗУ, БЕЗ НАЖАТИЯ ЛКМ
+  if (currentLevel === 'PVP') {
+    isWaiting = false;
+    if (sh) sh.classList.add('hidden');
+  }
   
   updateArtifactUI();
   updateMinimapVisibility();  // <--- ЭТА СТРОКА ДОЛЖНА БЫТЬ
@@ -928,8 +948,19 @@ function update(dt) {
   updateAmbientBubbles(dt);
   if (sub.invuln > 0) sub.invuln -= dt;
 
-  if (sub.hp <= 0) { sub.hp = 0; die(); return; }
-
+  if (sub.hp <= 0) { 
+    sub.hp = 0; 
+    if (currentLevel === 'PVP') {
+      if (typeof mpSendMyPosition === 'function' && myRoomCode) {
+      mpSendMyPosition(sub.x, sub.y, sub.angle, sub.propellerAngle, 0);
+      }
+      if (typeof mpSendDead === 'function') mpSendDead(); // <-- Отправляем сигнал
+      if (typeof pvpGameOver === 'function') pvpGameOver(false);
+    } else {
+      die(); 
+    }
+    return; 
+  }
   // Финиш
   const fdx = sub.x - finish.x, fdy = sub.y - finish.y;
   if (Math.hypot(fdx, fdy) < finish.r - 4) {
@@ -964,6 +995,120 @@ function update(dt) {
     sub.vx = 0;
     sub.vy = 0;
   }
+  // Обновление снарядов врага (визуальные)
+  if (currentLevel === 'PVP' && typeof remoteTorpedoes !== 'undefined') {
+    for (let i = remoteTorpedoes.length - 1; i >= 0; i--) {
+      const t = remoteTorpedoes[i];
+      t.x += t.vx * dt;
+      t.y += t.vy * dt;
+      t.life -= dt;
+      
+      // Проверка столкновения со стенами
+      let hit = false;
+      for (const w of walls) {
+        if (circleVsSegment(t.x, t.y, 4, w.x1, w.y1, w.x2, w.y2).hit) { hit = true; break; }
+      }
+      
+      if (hit || t.life <= 0) {
+        remoteTorpedoes.splice(i, 1);
+      }
+    }
+  }
+
+    // ============================================================
+  // ⚡ ИНТЕРПОЛЯЦИЯ ВРАГА (плавное движение)
+  // ============================================================
+  if (currentLevel === 'PVP' && typeof opponentPos !== 'undefined' && opponentPos.visible) {
+    const lerpSpeed = 0.25;
+    
+    // Движение
+    opponentPos.x += (opponentTarget.x - opponentPos.x) * lerpSpeed;
+    opponentPos.y += (opponentTarget.y - opponentPos.y) * lerpSpeed;
+    
+    // Защита от NaN
+    if (isNaN(opponentPos.x)) opponentPos.x = opponentTarget.x;
+    if (isNaN(opponentPos.y)) opponentPos.y = opponentTarget.y;
+    
+    // Поворот
+    let angleDiff = opponentTarget.angle - opponentPos.angle;
+    if (isNaN(angleDiff)) angleDiff = 0; 
+    
+    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+    opponentPos.angle += angleDiff * lerpSpeed;
+    
+    if (isNaN(opponentPos.angle)) opponentPos.angle = 0;
+
+    // Пропеллер
+    opponentPos.propellerAngle = opponentTarget.propellerAngle;
+  }
+  // ============================================================
+  // ============================================================
+  // PVP: СТОЛКНОВЕНИЯ И УРОН
+  // ============================================================
+  // ============================================================
+  // PVP: СТОЛКНОВЕНИЯ И УРОН
+  // ============================================================
+  if (currentLevel === 'PVP' && typeof opponentPos !== 'undefined' && opponentPos.visible && sub.hp > 0) {
+    
+    // 1. Наши торпеды бьют врага
+    for (let i = torpedoes.length - 1; i >= 0; i--) {
+      const t = torpedoes[i];
+      const dx = t.x - opponentPos.x;
+      const dy = t.y - opponentPos.y;
+      if (dx*dx + dy*dy < (sub.r * 1.5 + 10) * (sub.r * 1.5 + 10)) {
+        torpedoes.splice(i, 1);
+        if (typeof mpSendHit === 'function') mpSendHit(20); // Отправляем урон
+        soundFishHit();
+        break;
+      }
+    }
+
+    // 2. Вражеские торпеды бьют нас
+    if (typeof remoteTorpedoes !== 'undefined') {
+      for (let i = remoteTorpedoes.length - 1; i >= 0; i--) {
+        const t = remoteTorpedoes[i];
+        const dx = t.x - sub.x;
+        const dy = t.y - sub.y;
+        if (dx*dx + dy*dy < (sub.r + 10) * (sub.r + 10)) {
+          remoteTorpedoes.splice(i, 1);
+          soundWallHit();
+          break;
+        }
+      }
+    }
+
+    // 3. Таран
+    const rdx = sub.x - opponentPos.x;
+    const rdy = sub.y - opponentPos.y;
+    const rdist = Math.hypot(rdx, rdy);
+    if (rdist < sub.r * 2 && sub.invuln <= 0) {
+      sub.invuln = 1.0;
+      sub.hp -= 15; 
+      if (typeof mpSendHit === 'function') mpSendHit(15);
+      
+      const d = rdist || 1;
+      sub.vx = (rdx / d) * 300;
+      sub.vy = (rdy / d) * 300;
+      soundWallHit();
+    }
+  }
+
+   // Проверка победы (если у врага 0 HP)
+  if (currentLevel === 'PVP' && typeof opponentTarget !== 'undefined' && opponentTarget.hp <= 0) {
+    if (typeof pvpGameOver === 'function') pvpGameOver(true);
+  }
+
+    // Отправка координат по сети
+  if (currentLevel === 'PVP' && typeof mpSendMyPosition === 'function' && myRoomCode) {
+    if (!window.lastNetSend) window.lastNetSend = 0;
+    if (Date.now() - window.lastNetSend > 50) {
+      mpSendMyPosition(sub.x, sub.y, sub.angle, sub.propellerAngle, sub.hp);
+      window.lastNetSend = Date.now();
+    }
+  }
+  // ----------------------
+ 
   // ----------------------
   updateCamera();
   updateHud();
@@ -995,7 +1140,19 @@ function die() {
 
 async function showStats(title) {
   el('result-title').textContent = title;
-  const run = currentRun;
+  const run = currentRun; 
+  // Для тренировки — свой заголовок и сохранение прогресса
+  if (String(currentLevel).startsWith('T')) {
+    if (run.resultState === 'win') {
+      el('result-title').textContent = '🎓 Молодец! Тренировка пройдена!';
+      if (typeof saveTrainingCompletion === 'function') {
+        saveTrainingCompletion(currentLevel);
+      }
+    } else {
+      el('result-title').textContent = '🎓 Попробуй ещё раз!';
+    }
+  }
+  
   const totalTime = run.time;
   const accuracy = run.accuracy;
 
@@ -1074,15 +1231,35 @@ async function showStats(title) {
   } else {
     // Успех или смерть
     const statsContainer = el('stats');
-    // Добавляем блок артефакта к статистике (если он есть)
-    if (statsContainer) statsContainer.innerHTML = html + artifactHtml;
+
+    // 🏆 Если это победа на 5-м уровне — добавляем кнопку финала
+    let endingHtml = '';
+    if (currentLevel === 5 && run.resultState === 'win' && accuracy >= UNLOCK_THRESHOLD) {
+      endingHtml = `
+        <div style="margin-top: 20px; padding: 20px; background: linear-gradient(145deg, rgba(255,209,102,0.2), rgba(212,162,89,0.1)); border: 2px solid #ffd166; border-radius: 12px; text-align: center;">
+          <h3 style="color: #ffd166; margin: 0 0 12px; font-size: 20px;">🏆 ЭКСПЕДИЦИЯ ЗАВЕРШЕНА!</h3>
+          <p style="margin: 0 0 16px; font-size: 14px; opacity: 0.9; line-height: 1.5;">Вы прошли все 5 секторов, заморозили Кракена и открыли путь к сокровищу древнего храма.</p>
+          <button class="btn gold" id="showEndingBtn" style="font-size: 16px; padding: 14px 30px;">🎬 Смотреть финал</button>
+        </div>
+      `;
+    }
+
+    if (statsContainer) statsContainer.innerHTML = html + artifactHtml + endingHtml;
     showScreen('stats');
+
+    // Привязываем кнопку "Смотреть финал" (если она есть)
+    const showEndingBtn = el('showEndingBtn');
+    if (showEndingBtn) {
+      showEndingBtn.addEventListener('click', () => showScreen('ending'));
+    }
   }
 
   // 4. Отправка результата (Уровень + Артефакты В ОДНОМ ЗАПРОСЕ)
-  if (!scoreSent && currentPlayer && run.resultState === 'win') {
+  if (!scoreSent && currentPlayer && run.resultState === 'win' && !String(currentLevel).startsWith('T')) {
     scoreSent = true;
     const result = await sendResult(currentLevel, accuracy);
+    // ...
+  
     const s = el('sendStatus');
     if (s) {
       if (result.ok) {
@@ -1097,9 +1274,9 @@ async function showStats(title) {
   }
 
   // 5. Обновляем прогресс
-  if (run.resultState === 'win' && accuracy >= UNLOCK_THRESHOLD) {
-    if (currentLevel + 1 > playerProgress && currentLevel < MAX_LEVEL) {
-      playerProgress = currentLevel + 1;
+  if (run.resultState === 'win' && accuracy >= UNLOCK_THRESHOLD && !String(currentLevel).startsWith('T')) {
+    if (Number(currentLevel) + 1 > playerProgress && Number(currentLevel) < MAX_LEVEL) {
+      playerProgress = Number(currentLevel) + 1;
     }
   }
 }
@@ -1345,7 +1522,18 @@ function goToMap() {
   started = false; running = false; paused = false;
   el('pauseOverlay').classList.remove('show');
   stickEnd(); thrustUp(); stopMotor();
-  updateMinimapVisibility();  // <-- добавить сюда
+  updateMinimapVisibility();
+  
+  // Если тренировка не пройдена — принудительно режим Тренировки
+  if (typeof isTrainingComplete === 'function' && !isTrainingComplete()) {
+    if (typeof currentMapMode !== 'undefined') {
+      currentMapMode = 'training';
+    }
+    document.querySelectorAll('.mode-tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.mode === 'training');
+    });
+  }
+  
   updateMapInfo();
   showScreen('map');
 }
@@ -1548,8 +1736,17 @@ function updateKraken(dt) {
     sub.x = kHead.x + (kdx / d) * (krakenPos.r + sub.r + 5);
     sub.y = kHead.y + (kdy / d) * (krakenPos.r + sub.r + 5);
     soundWallHit();
-    if (sub.hp <= 0) { sub.hp = 0; die(); return; }
+      if (sub.hp <= 0) { 
+    sub.hp = 0; 
+    if (currentLevel === 'PVP' && typeof pvpGameOver === 'function') {
+      pvpGameOver(false);
+    } else {
+      die(); 
+    }
+    return; 
   }
+}
+  
 
   // Победа
   // Победа — заморозка вместо убийства
@@ -1710,6 +1907,21 @@ function updateMinimapVisibility() {
     mm.classList.add('hidden');
   }
 }
+// ---------- Кнопки экрана ФИНАЛА ----------
+const endingRestartBtn = el('endingRestartBtn');
+if (endingRestartBtn) {
+  endingRestartBtn.addEventListener('click', () => {
+    currentLevel = 1;
+    startLevel(1);
+  });
+}
+
+const endingMapBtn = el('endingMapBtn');
+if (endingMapBtn) {
+  endingMapBtn.addEventListener('click', goToMap);
+}
+
+
 requestAnimationFrame(loop);
 
 checkOrientation();

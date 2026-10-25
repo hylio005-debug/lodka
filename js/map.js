@@ -1,21 +1,83 @@
 // ================================================================
 //  js/map.js — КАРТА УРОВНЕЙ
 // ================================================================
+// ================================================================
+//  УЧЁТ ПРОХОЖДЕНИЯ ТРЕНИРОВКИ (привязан к игроку)
+// ================================================================
+let completedTraining = [];
 
-function updateMapInfo() {
-  const info = el('mapPlayerInfo');
-  if (currentPlayer) {
-    if (currentPlayer.source === 'nick') {
-      info.textContent = `👤 ${currentPlayer.short} · Прогресс: ${playerProgress} / ${MAX_LEVEL}`;
-    } else {
-      info.textContent = `${currentPlayer.klass} — ${currentPlayer.short} · Прогресс: ${playerProgress} / ${MAX_LEVEL}`;
+function getTrainingKey() {
+  if (!currentPlayer) return null;
+  const safeKlass = (currentPlayer.klass === '—' || !currentPlayer.klass) ? 'nick' : currentPlayer.klass;
+  return 'pogruzhenie_training_' + safeKlass + '_' + currentPlayer.short;
+}
+
+function loadTrainingForPlayer() {
+  completedTraining = [];
+  const key = getTrainingKey();
+  if (!key) return;
+  try {
+    const saved = localStorage.getItem(key);
+    if (saved) completedTraining = JSON.parse(saved) || [];
+  } catch (e) {}
+  console.log(`🎓 Тренировка загружена: ${completedTraining.length}/5 для ${key}`);
+}
+
+function isTrainingComplete() {
+  return completedTraining.length >= 5;
+}
+
+function saveTrainingCompletion(levelId) {
+  if (!completedTraining.includes(levelId)) {
+    completedTraining.push(levelId);
+    const key = getTrainingKey();
+    if (key) {
+      try {
+        localStorage.setItem(key, JSON.stringify(completedTraining));
+      } catch (e) {}
     }
-  } else {
-    info.textContent = 'Выберите игрока';
+    console.log(`🎓 Тренировка: пройдено ${completedTraining.length}/5 (${levelId})`);
   }
 }
 
+function getTrainingProgressText() {
+  const done = completedTraining.length;
+  if (done >= 5) return '✅ Тренировка завершена!';
+  return `🎓 Прогресс: ${done}/5 уровней`;
+}
+function updateMapInfo() {
+  const info = el('mapPlayerInfo');
+  if (!info) return;
+  
+  const modeLabel = currentMapMode === 'training' 
+    ? `🎓 Тренировка (${completedTraining.length}/5)` 
+    : '🗺️ Кампания';
+  
+  if (currentPlayer) {
+    if (currentPlayer.source === 'nick') {
+      info.textContent = `${modeLabel} · 👤 ${currentPlayer.short}`;
+    } else {
+      info.textContent = `${modeLabel} · ${currentPlayer.klass} — ${currentPlayer.short}`;
+    }
+  } else {
+    info.textContent = modeLabel;
+  }
+  
+  // Обновить блокировку кампании
+  if (typeof updateModeTabs === 'function') updateModeTabs();
+}
+
+let currentMapMode = 'training'; // По умолчанию — тренировка
+
 function drawMapCanvas() {
+  // ⚡ ПРИНУДИТЕЛЬНЫЙ ПЕРЕХОД В ТРЕНИРОВКУ, если она не пройдена
+  if (typeof isTrainingComplete === 'function' && !isTrainingComplete() && currentMapMode === 'campaign') {
+    currentMapMode = 'training';
+    document.querySelectorAll('.mode-tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.mode === 'training');
+    });
+  }
+
   const mapCanvas = el('mapCanvas');
   if (!mapCanvas) return;
   const mctx = mapCanvas.getContext('2d');
@@ -44,13 +106,18 @@ function drawMapCanvas() {
     mctx.stroke();
   }
 
-  const points = LEVELS_META.map(meta => ({
+  // Выбор массива уровней в зависимости от режима
+  const activeMeta = currentMapMode === 'training' ? TRAINING_LEVELS_META : LEVELS_META;
+
+  const points = activeMeta.map(meta => ({
     x: meta.mapX * mW,
     y: (1 - meta.mapY) * mH,
     meta: meta
   }));
 
-  mctx.strokeStyle = 'rgba(212, 162, 89, 0.5)';
+  mctx.strokeStyle = currentMapMode === 'training' 
+    ? 'rgba(110, 231, 135, 0.5)' 
+    : 'rgba(212, 162, 89, 0.5)';
   mctx.lineWidth = 2;
   mctx.setLineDash([6, 8]);
   mctx.beginPath();
@@ -64,15 +131,29 @@ function drawMapCanvas() {
   const t = Date.now() / 1000;
   points.forEach((p, i) => {
     const levelId = p.meta.id;
-    const isUnlocked = levelId <= playerProgress;
-    const isPassed = levelId < playerProgress;
+    
+    // Для кампании — обычная логика разблокировки
+    // Для тренировки — все разблокированы
+    let isUnlocked, isPassed;
+    if (currentMapMode === 'training') {
+      // Прогрессивная разблокировка: T1 всегда, T2 после T1 и т.д.
+      const trainingIndex = activeMeta.findIndex(m => m.id === levelId);
+      isUnlocked = trainingIndex <= completedTraining.length;
+      isPassed = completedTraining.includes(levelId);
+    } else {
+      isUnlocked = levelId <= playerProgress;
+      isPassed = levelId < playerProgress;
+    }
 
     const pulse = isUnlocked && !isPassed ? 1 + Math.sin(t * 3 + i) * 0.1 : 1;
     const r = 22 * pulse;
 
     if (isUnlocked) {
       const glow = mctx.createRadialGradient(p.x, p.y, r * 0.3, p.x, p.y, r * 2);
-      glow.addColorStop(0, isPassed ? 'rgba(110, 231, 135, 0.4)' : 'rgba(255, 220, 130, 0.5)');
+      const glowColor = currentMapMode === 'training' 
+        ? 'rgba(110, 231, 135, 0.5)' 
+        : 'rgba(255, 220, 130, 0.5)';
+      glow.addColorStop(0, glowColor);
       glow.addColorStop(1, 'rgba(255, 220, 130, 0)');
       mctx.fillStyle = glow;
       mctx.beginPath();
@@ -85,8 +166,13 @@ function drawMapCanvas() {
       grad.addColorStop(0, '#a4ffb4');
       grad.addColorStop(1, '#2e8b57');
     } else if (isUnlocked) {
-      grad.addColorStop(0, '#ffd166');
-      grad.addColorStop(1, '#a87c37');
+      if (currentMapMode === 'training') {
+        grad.addColorStop(0, '#a4ffb4');
+        grad.addColorStop(1, '#2e8b57');
+      } else {
+        grad.addColorStop(0, '#ffd166');
+        grad.addColorStop(1, '#a87c37');
+      }
     } else {
       grad.addColorStop(0, '#3a4a5a');
       grad.addColorStop(1, '#1a2a3a');
@@ -108,13 +194,10 @@ function drawMapCanvas() {
 
     mctx.font = 'bold 11px monospace';
     mctx.fillStyle = isUnlocked ? '#ffffff' : '#7a8a9a';
-    mctx.fillText('Ур. ' + levelId, p.x, p.y + r + 14);
+    const label = currentMapMode === 'training' ? p.meta.name : ('Ур. ' + levelId);
+    mctx.fillText(label, p.x, p.y + r + 14);
 
-    mctx.font = '11px monospace';
-    mctx.fillStyle = isUnlocked ? '#7fd6ff' : '#5a6a7a';
-    mctx.fillText(p.meta.name, p.x, p.y + r + 28);
-
-    if (!isUnlocked) {
+    if (currentMapMode === 'campaign' && !isUnlocked) {
       mctx.font = '14px sans-serif';
       mctx.fillStyle = '#7a8a9a';
       mctx.fillText('🔒', p.x + r * 0.7, p.y - r * 0.7);
@@ -127,10 +210,108 @@ function drawMapCanvas() {
   });
 
   mctx.font = '11px monospace';
-  mctx.fillStyle = '#ffd166';
+  mctx.fillStyle = currentMapMode === 'training' ? '#6ee787' : '#ffd166';
   mctx.textAlign = 'center';
-  mctx.fillText('Для открытия следующего сектора нужно ≥ ' + UNLOCK_THRESHOLD + '%', mW / 2, mH - 12);
+  let footer;
+  if (currentMapMode === 'training') {
+    if (isTrainingComplete()) {
+      footer = '✅ Тренировка завершена! Кампания разблокирована.';
+    } else {
+      footer = `🎓 Тренировка: ${completedTraining.length}/5 · Пройдите все для доступа к кампании`;
+    }
+  } else {
+    footer = 'Для открытия следующего сектора нужно ≥ ' + UNLOCK_THRESHOLD + '%';
+  }
+  mctx.fillText(footer, mW / 2, mH - 12);
 }
+
+// ---------- Переключение вкладок ----------
+// ---------- Переключение вкладок ----------
+function updateModeTabs() {
+  const campaignTab = document.querySelector('.mode-tab[data-mode="campaign"]');
+  if (campaignTab) {
+    if (isTrainingComplete()) {
+      campaignTab.classList.remove('locked');
+      campaignTab.title = 'Кампания';
+    } else {
+      campaignTab.classList.add('locked');
+      campaignTab.title = 'Кампания (сначала пройдите тренировку)';
+    }
+  }
+}
+
+document.querySelectorAll('.mode-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const mode = tab.dataset.mode;
+    
+    if (tab.classList.contains('disabled')) {
+      showToast('⚔️ Скоро появится!');
+      return;
+    }
+    
+    // ⚔️ Мультиплеер — открываем отдельный экран
+    if (mode === 'multiplayer') {
+      showScreen('multiplayer');
+      if (typeof initMultiplayer === 'function') initMultiplayer();
+      return;
+    }
+    
+    if (mode === 'speedrun') {
+      showToast('⏱️ Спидран скоро появится!');
+      return;
+    }
+    if (mode === 'campaign' && !isTrainingComplete()) {
+      showToast(`🔒 Пройдите тренировку (${completedTraining.length}/5)`);
+      return;
+    }
+    
+    currentMapMode = mode;
+    document.querySelectorAll('.mode-tab').forEach(t => 
+      t.classList.toggle('active', t === tab)
+    );
+    drawMapCanvas();
+    updateMapInfo();
+  });
+});
+
+// Проверить блокировку кампании при загрузке
+updateModeTabs();
+
+// ---------- Клик по карте ----------
+el('mapCanvas').addEventListener('click', (e) => {
+  const mapCanvas = el('mapCanvas');
+  const rect = mapCanvas.getBoundingClientRect();
+  const scaleX = mapCanvas.width / rect.width;
+  const scaleY = mapCanvas.height / rect.height;
+  const clickX = (e.clientX - rect.left) * scaleX;
+  const clickY = (e.clientY - rect.top) * scaleY;
+
+  const mW = mapCanvas.width;
+  const mH = mapCanvas.height;
+
+  const activeMeta = currentMapMode === 'training' ? TRAINING_LEVELS_META : LEVELS_META;
+
+  for (const meta of activeMeta) {
+    const px = meta.mapX * mW;
+    const py = (1 - meta.mapY) * mH;
+    const dist = Math.hypot(clickX - px, clickY - py);
+    if (dist <= 40) {
+      if (currentMapMode === 'training') {
+        currentLevel = meta.id;
+        startLevel(meta.id);
+      } else {
+        if (meta.id <= playerProgress) {
+          currentLevel = meta.id;
+          startLevel(meta.id);
+        } else {
+          showToast('🔒 Сектор закрыт. Пройдите предыдущие на ' + UNLOCK_THRESHOLD + '%+');
+        }
+      }
+      return;
+    }
+  }
+});
+
 
 // ---------- Клик по карте ----------
 el('mapCanvas').addEventListener('click', (e) => {

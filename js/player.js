@@ -134,21 +134,29 @@ function setServerStatus(state, text) {
 }
 
 
-
 function goToSelectPlayer() {
   started = false; running = false; paused = false;
   el('pauseOverlay').classList.remove('show');
   if (typeof stickEnd === 'function') stickEnd();
   if (typeof thrustUp === 'function') thrustUp();
   if (typeof stopMotor === 'function') stopMotor();
+  
   currentPlayer = null;
   playerProgress = 1;
+  
+  // Сбрасываем прогресс тренировки и режим карты
+  if (typeof completedTraining !== 'undefined') {
+    completedTraining = [];
+  }
+  if (typeof currentMapMode !== 'undefined') {
+    currentMapMode = 'training';
+  }
+  
   switchMode('list');
   el('nickInput').value = '';
   showScreen('select');
   loadStudentsLocal();
 }
-
 // ---------- Слушатели ----------
 el('tabList').addEventListener('click', () => switchMode('list'));
 el('tabNick').addEventListener('click', () => switchMode('nick'));
@@ -207,6 +215,23 @@ el('confirmStudentBtn').addEventListener('click', async () => {
   
   updatePlayerBadge();
   await loadPlayerProgress();
+  
+  // Загружаем прогресс тренировки именно этого игрока
+  if (typeof loadTrainingForPlayer === 'function') {
+    loadTrainingForPlayer();
+  }
+  
+  // Сбрасываем режим карты (если тренировка не пройдена — принудительно она)
+  if (typeof isTrainingComplete === 'function' && !isTrainingComplete()) {
+    if (typeof currentMapMode !== 'undefined') {
+      currentMapMode = 'training';
+    }
+  } else {
+    if (typeof currentMapMode !== 'undefined') {
+      currentMapMode = 'campaign';
+    }
+  }
+  
   showScreen('map');
 });
 
