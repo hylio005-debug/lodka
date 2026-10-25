@@ -8,7 +8,7 @@ let socket = null;
 // ================================================================
 const SERVER_URLS = {
   local: window.location.origin, 
-  online: 'http://192.144.14.42:3000' // <-- Твой IP с Cloud.ru
+  online: 'https://lodka777.ru' // <-- Теперь с HTTPS!
 };
 
 let currentServerMode = 'local'; // 'local' или 'online'
