@@ -20,10 +20,20 @@ function loadTrainingForPlayer() {
     const saved = localStorage.getItem(key);
     if (saved) completedTraining = JSON.parse(saved) || [];
   } catch (e) {}
+  
+  // Если на сервере прогресс кампании > 1, значит тренировка уже неактуальна
+  if (typeof playerProgress !== 'undefined' && playerProgress > 1) {
+    completedTraining = ['T1', 'T2', 'T3', 'T4', 'T5']; // Помечаем как пройденную
+  }
+
   console.log(`🎓 Тренировка загружена: ${completedTraining.length}/5 для ${key}`);
 }
 
 function isTrainingComplete() {
+  // Если прогресс кампании больше 1, значит игрок уже играет, тренировка не нужна
+  if (typeof playerProgress !== 'undefined' && playerProgress > 1) {
+    return true;
+  }
   return completedTraining.length >= 5;
 }
 
