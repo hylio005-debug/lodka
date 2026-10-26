@@ -14,8 +14,8 @@ registerLevel('PVP', {
   maxThrust: 170, thrustAccel: 0.04, maxAngVel: 1.6, angAccel: 0.035, fallBlend: 0.05,
   worldW: 2000, worldH: 1100, floorY: 1060,
   
-  start: { x: 200, y: 800 }, // Старт для первого
-  start2: { x: 1800, y: 800 }, // Старт для второго
+  start: { x: 800, y: 800 }, 
+  start2: { x: 1200, y: 800 },
   finish: { x: 0, y: 0, r: 1 }, // Финиш не нужен, ставим в угол
 
   levelType: 'maze',

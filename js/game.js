@@ -898,8 +898,8 @@ function update(dt) {
 
     // Коллизия с дроном
     const isAngler = f.type === 'angler';
-    const rx = isAngler ? f.r * 1.5 : f.r * 1.4;
-    const ry = isAngler ? f.r * 1.0 : f.r * 0.9;
+    const rx = isAngler ? f.r * 2.5 : f.r * 1.4;
+    const ry = isAngler ? f.r * 1.5 : f.r * 0.9;
     const bodyDx = sub.x - f.x;
     const bodyDy = sub.y - f.y;
     const bodyNx = bodyDx / (rx + sub.r);
@@ -927,8 +927,11 @@ function update(dt) {
       }
     }
 
-    const pushRadius = Math.max(rx, ry) + sub.r * 0.5;
+    // Физическое отталкивание (срабатывает ТОЛЬКО когда урон уже прошел)
+    // Делаем радиус отталкивания чуть меньше радиуса урона
+    const pushRadius = Math.max(rx * 0.7, ry * 0.7) + sub.r * 0.5; 
     const dist = Math.hypot(bodyDx, bodyDy) || 1;
+    
     if (dist < pushRadius) {
       const ux = bodyDx / dist, uy = bodyDy / dist;
       const overlap = pushRadius - dist;

@@ -2,6 +2,127 @@
 //  js/render.js — ОТРИСОВКА
 // ================================================================
 
+
+// Загрузка
+const svgFishSaberHead = new Image(); svgFishSaberHead.src = 'assets/fish/sabertooth/head.svg';
+const svgFishSaberEye = new Image(); svgFishSaberEye.src = 'assets/fish/sabertooth/eye.svg';
+const svgFishSaberPupil = new Image(); svgFishSaberPupil.src = 'assets/fish/sabertooth/pupil.svg';
+const svgFishSaberJaw = new Image(); svgFishSaberJaw.src = 'assets/fish/sabertooth/jaw.svg';
+const svgFishSaberFin = new Image(); svgFishSaberFin.src = 'assets/fish/sabertooth/fin.svg';
+const svgFishSaberBody1 = new Image(); svgFishSaberBody1.src = 'assets/fish/sabertooth/body1.svg';
+const svgFishSaberBody2 = new Image(); svgFishSaberBody2.src = 'assets/fish/sabertooth/body2.svg';
+const svgFishSaberBody3 = new Image(); svgFishSaberBody3.src = 'assets/fish/sabertooth/body3.svg';
+const svgFishSaberTail = new Image(); svgFishSaberTail.src = 'assets/fish/sabertooth/tail.svg';
+
+// Отрисовка
+function drawSabertooth(f) {
+  const dir = f.dir >= 0 ? 1 : -1;
+  const time = sub.animTime;
+  const mouthOpen = 0.3 + Math.abs(Math.sin(f.mouthPhase)) * 0.7;
+  const finWag = Math.sin(time * 6) * 0.4;
+
+  ctx.save();
+  ctx.translate(f.x, f.y);
+  ctx.scale(-dir, 1); 
+
+  // ⚡ УВЕЛИЧИЛИ РАЗМЕР В 2 РАЗА (было 8)
+  const size = f.r * 16; 
+  const offset = -size / 2;
+
+  const waveSpeed = 5;
+  const waveAmp = 0.15;
+
+  // ==========================================
+  // СЛОЙ 1: ТЕЛО (Задний план)
+  // ==========================================
+
+
+  
+  ctx.save(); // BODY 1
+  const p1x = (120 / 400 - 0.5) * size;
+  const p1y = (180 / 400 - 0.5) * size;
+  ctx.translate(p1x, p1y);
+  ctx.rotate(Math.sin(time * waveSpeed) * waveAmp);
+  ctx.translate(-p1x, -p1y);
+  ctx.drawImage(svgFishSaberBody1, offset, offset, size, size);
+
+  ctx.save(); // BODY 2
+  const p2x = (190 / 400 - 0.5) * size;
+  const p2y = (180 / 400 - 0.5) * size;
+  ctx.translate(p2x, p2y);
+  ctx.rotate(Math.sin(time * waveSpeed - 0.7) * waveAmp);
+  ctx.translate(-p2x, -p2y);
+  ctx.drawImage(svgFishSaberBody2, offset, offset, size, size);
+
+  ctx.save(); // BODY 3
+  const p3x = (250 / 400 - 0.5) * size;
+  const p3y = (180 / 400 - 0.5) * size;
+  ctx.translate(p3x, p3y);
+  ctx.rotate(Math.sin(time * waveSpeed - 1.4) * waveAmp);
+  ctx.translate(-p3x, -p3y);
+  ctx.drawImage(svgFishSaberBody3, offset, offset, size, size);
+
+  ctx.save(); // TAIL
+  const p4x = (320 / 400 - 0.5) * size;
+  const p4y = (180 / 400 - 0.5) * size;
+  ctx.translate(p4x, p4y);
+  ctx.rotate(Math.sin(time * waveSpeed - 2.1) * waveAmp);
+  ctx.translate(-p4x, -p4y);
+  ctx.drawImage(svgFishSaberTail, offset, offset, size, size);
+  ctx.restore(); // TAIL
+
+  ctx.restore(); // BODY 3
+  ctx.restore(); // BODY 2
+
+  // ==========================================
+  // СЛОЙ 2: ПЛАВНИК (Поверх тела)
+  // ==========================================
+  ctx.save();
+  const fx = (155 / 400 - 0.5) * size;
+  const fy = (215 / 400 - 0.5) * size;
+  ctx.translate(fx, fy);
+  ctx.rotate(finWag);
+  ctx.translate(-fx, -fy);
+  ctx.drawImage(svgFishSaberFin, offset, offset, size, size);
+  ctx.restore();
+
+  ctx.restore(); // BODY 1
+
+  // ==========================================
+  // СЛОЙ 3: ГОЛОВА (Самый передний план)
+  // ==========================================
+  
+  // Челюсть (Под головой)
+  ctx.save();
+  const jx = (80 / 400 - 0.5) * size;
+  const jy = (200 / 400 - 0.5) * size;
+  ctx.translate(jx, jy);
+  ctx.rotate(mouthOpen * -0.3);
+  ctx.translate(-jx, -jy);
+  ctx.drawImage(svgFishSaberJaw, offset, offset, size, size);
+  ctx.restore(); 
+
+  // Голова
+  ctx.drawImage(svgFishSaberHead, offset, offset, size, size);
+
+  // Глаз
+  ctx.drawImage(svgFishSaberEye, offset, offset, size, size);
+
+  // Зрачок
+  const pTrackX = Math.cos(Math.atan2(sub.y - f.y, sub.x - f.x)) * 2;
+  const pTrackY = Math.sin(Math.atan2(sub.y - f.y, sub.x - f.x)) * 2;
+  ctx.save();
+  ctx.translate(pTrackX, pTrackY);
+  ctx.drawImage(svgFishSaberPupil, offset, offset, size, size);
+  ctx.restore();
+
+  ctx.restore(); // Конец отрисовки рыбы
+}
+
+
+
+
+
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d', { alpha: false });
 
@@ -29,6 +150,20 @@ svgKrakenPupilRight.src = 'assets/boss/kraken/kraken-pupil-right.svg';
 
 const svgKrakenMouth = new Image();
 svgKrakenMouth.src = 'assets/boss/kraken/kraken-mouth.svg';
+
+
+// Загрузка SVG для удильщика
+const svgFishAnglerBody = new Image();
+svgFishAnglerBody.src = 'assets/fish/angler/body.svg';
+const svgFishAnglerTail = new Image();
+svgFishAnglerTail.src = 'assets/fish/angler/tail.svg';
+const svgFishAnglerJaw = new Image();
+svgFishAnglerJaw.src = 'assets/fish/angler/jaw.svg';
+const svgFishAnglerEye = new Image();
+svgFishAnglerEye.src = 'assets/fish/angler/eye.svg';
+const svgFishAnglerLure = new Image();
+svgFishAnglerLure.src = 'assets/fish/angler/lure.svg';
+
 
 // ================================================================
 // ЗАГРУЗКА Path2D ДЛЯ ТОЧНЫХ КОЛЛИЗИЙ
@@ -986,7 +1121,9 @@ function drawSub() {
 
 function drawFish(f) {
   if (f.type === 'angler') drawAnglerFish(f);
+  else if (f.type === 'sabertooth') drawSabertooth(f); // <--- ВОТ ЭТО
   else drawNormalFish(f);
+  // ...
 
   if (f.frozen > 0) {
     ctx.save();
@@ -1055,119 +1192,84 @@ function drawNormalFish(f) {
 
 function drawAnglerFish(f) {
   const dir = f.dir >= 0 ? 1 : -1;
-  const tailWag = Math.sin(f.tailPhase) * 0.5;
+  const tailWag = Math.sin(f.tailPhase); 
   const lurePulse = 0.7 + Math.sin(f.anglerPhase) * 0.3;
   const mouthOpen = 0.3 + Math.abs(Math.sin(f.mouthPhase)) * 0.7;
 
   ctx.save();
   ctx.translate(f.x, f.y);
-  ctx.scale(dir, 1);
+  
+  // Отражаем рыбу, если она плывет вправо (её родной вид — влево)
+  ctx.scale(-dir, 1); 
 
+  // Размер рыбы в игре (если слишком большая/маленькая — меняй 3.5)
+  const size = f.r * 6.5; 
+  const offset = -size / 2;
+
+  // ============================================================
+  // 1. ХВОСТ (Вращается вокруг точки крепления)
+  // ============================================================
+  // Точка крепления хвоста в координатах SVG (x=71, y=63)
+  const tailPivotX = (71 / 105.83) * size - size / 2;
+  const tailPivotY = (63 / 105.83) * size - size / 2;
+  
+  ctx.save();
+  ctx.translate(tailPivotX, tailPivotY);
+  ctx.rotate(tailWag * 0.4); // Плавно машем хвостом
+  ctx.drawImage(svgFishAnglerTail, offset - tailPivotX, offset - tailPivotY, size, size);
+  ctx.restore();
+
+    // ============================================================
+  // 2. ЧЕЛЮСТЬ (Рисуется ДО тела)
+  // ============================================================
+  const jawPivotX = (45 / 105.83) * size - size / 2;
+  const jawPivotY = (65 / 105.83) * size - size / 2;
+  
+  ctx.save();
+  ctx.translate(jawPivotX, jawPivotY);
+  ctx.rotate(mouthOpen * -0.3);
+  ctx.drawImage(svgFishAnglerJaw, offset - jawPivotX, offset - jawPivotY, size, size);
+  ctx.restore();
+
+  // ============================================================
+  // 3. УДОЧКА И СВЕЧЕНИЕ (Рисуется ДО тела, чтобы быть за спиной)
+  // ============================================================
+  const lurePivotX = (50 / 105.83) * size - size / 2;
+  const lurePivotY = (55 / 105.83) * size - size / 2;
+  
+  ctx.save();
+  ctx.translate(lurePivotX, lurePivotY);
+  ctx.rotate(Math.sin(f.anglerPhase) * 0.1);
+  ctx.drawImage(svgFishAnglerLure, offset - lurePivotX, offset - lurePivotY, size, size);
+  
+  const tipX = (5 / 105.83) * size - size / 2;
+  const tipY = (40 / 105.83) * size - size / 2;
+  
   if (qualityLevel !== 'low') {
-    const lightGlow = ctx.createRadialGradient(f.r * 0.8, -f.r * 1.2, 2, f.r * 0.8, -f.r * 1.2, f.r * 5);
-    lightGlow.addColorStop(0, `rgba(255, 240, 180, ${0.35 * lurePulse})`);
-    lightGlow.addColorStop(0.5, `rgba(255, 220, 130, ${0.12 * lurePulse})`);
+    const lightGlow = ctx.createRadialGradient(tipX, tipY, 1, tipX, tipY, f.r * 4.5);
+    lightGlow.addColorStop(0, `rgba(255, 240, 180, ${0.9 * lurePulse})`);
+    lightGlow.addColorStop(0.3, `rgba(255, 220, 130, ${0.5 * lurePulse})`);
     lightGlow.addColorStop(1, 'rgba(255, 220, 130, 0)');
     ctx.fillStyle = lightGlow;
     ctx.beginPath();
-    ctx.arc(f.r * 0.8, -f.r * 1.2, f.r * 5, 0, Math.PI * 2);
+    ctx.arc(tipX, tipY, f.r * 4.5, 0, Math.PI * 2);
     ctx.fill();
   }
-
-  ctx.beginPath();
-  ctx.ellipse(0, 0, f.r * 1.5, f.r * 1.0, 0, 0, Math.PI * 2);
-  const bodyGrad = ctx.createRadialGradient(-f.r * 0.3, -f.r * 0.3, 2, 0, 0, f.r * 1.5);
-  bodyGrad.addColorStop(0, '#3a2040');
-  bodyGrad.addColorStop(1, '#0a0510');
-  ctx.fillStyle = bodyGrad;
-  ctx.fill();
-  ctx.strokeStyle = '#1a0a20';
-  ctx.lineWidth = 1.5 / zoom;
-  ctx.stroke();
-
-  ctx.save();
-  ctx.translate(-f.r * 1.4, 0);
-  ctx.rotate(tailWag);
-  ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.lineTo(-f.r * 0.9, -f.r * 0.8);
-  ctx.lineTo(-f.r * 0.6, 0);
-  ctx.lineTo(-f.r * 0.9, f.r * 0.8);
-  ctx.closePath();
-  ctx.fillStyle = '#2a1030';
-  ctx.fill();
-  ctx.strokeStyle = '#0a0510';
-  ctx.stroke();
   ctx.restore();
 
-  ctx.fillStyle = '#1a0010';
-  ctx.beginPath();
-  ctx.moveTo(f.r * 0.6, 0);
-  ctx.lineTo(f.r * 1.6, -f.r * 0.4 * mouthOpen);
-  ctx.lineTo(f.r * 1.7, 0);
-  ctx.lineTo(f.r * 1.6, f.r * 0.4 * mouthOpen);
-  ctx.closePath();
-  ctx.fill();
+  // ============================================================
+  // 4. ТЕЛО (Рисуется ПОВЕРХ челюсти и удочки)
+  // ============================================================
+  ctx.drawImage(svgFishAnglerBody, offset, offset, size, size);
 
-  ctx.fillStyle = '#fffaf0';
-  for (let i = 0; i < 5; i++) {
-    const tx = f.r * 0.7 + i * f.r * 0.2;
-    ctx.beginPath();
-    ctx.moveTo(tx, -f.r * 0.05);
-    ctx.lineTo(tx + f.r * 0.08, -f.r * 0.05);
-    ctx.lineTo(tx + f.r * 0.04, f.r * 0.15 * mouthOpen);
-    ctx.closePath();
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(tx, f.r * 0.05);
-    ctx.lineTo(tx + f.r * 0.08, f.r * 0.05);
-    ctx.lineTo(tx + f.r * 0.04, -f.r * 0.15 * mouthOpen);
-    ctx.closePath();
-    ctx.fill();
-  }
+  // ============================================================
+  // 5. ГЛАЗ
+  // ============================================================
+  ctx.drawImage(svgFishAnglerEye, offset, offset, size, size);
 
-  ctx.beginPath();
-  ctx.arc(f.r * 0.4, -f.r * 0.3, f.r * 0.25, 0, Math.PI * 2);
-  ctx.fillStyle = '#ffcc00';
-  ctx.fill();
-  ctx.strokeStyle = '#1a0a20';
-  ctx.lineWidth = 1.5 / zoom;
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(f.r * 0.45, -f.r * 0.3, f.r * 0.1, 0, Math.PI * 2);
-  ctx.fillStyle = '#000000';
-  ctx.fill();
-
-  ctx.strokeStyle = '#1a0a20';
-  ctx.lineWidth = 1.5 / zoom;
-  ctx.beginPath();
-  ctx.moveTo(f.r * 0.5, -f.r * 0.6);
-  ctx.quadraticCurveTo(f.r * 0.9, -f.r * 1.6, f.r * 0.9, -f.r * 2.0);
-  ctx.stroke();
-
-  const lureX = f.r * 0.9;
-  const lureY = -f.r * 2.0;
-  const lureR = f.r * 0.22 * (0.8 + lurePulse * 0.4);
-
-  const lureGlow = ctx.createRadialGradient(lureX, lureY, 1, lureX, lureY, lureR * 4);
-  lureGlow.addColorStop(0, `rgba(255, 250, 200, ${0.9 * lurePulse})`);
-  lureGlow.addColorStop(0.3, `rgba(255, 220, 130, ${0.5 * lurePulse})`);
-  lureGlow.addColorStop(1, 'rgba(255, 220, 130, 0)');
-  ctx.fillStyle = lureGlow;
-  ctx.beginPath();
-  ctx.arc(lureX, lureY, lureR * 4, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.beginPath();
-  ctx.arc(lureX, lureY, lureR, 0, Math.PI * 2);
-  ctx.fillStyle = `rgba(255, 250, 220, 0.9)`;
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(255, 220, 130, 0.9)';
-  ctx.lineWidth = 1 / zoom;
-  ctx.stroke();
-
-  ctx.restore();
+  ctx.restore(); // Конец отрисовки рыбы
 }
+
 
 // ================================================================
 //  НОВЫЕ ЭЛЕМЕНТЫ (Торпеды и Лебедка)

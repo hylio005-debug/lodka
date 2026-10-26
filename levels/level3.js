@@ -58,7 +58,7 @@ registerLevel(3, {
 
   fishes: [
     // Внизу слева
-    { x: 250, y: 800, r: 13, vx: 50, vy: 20, type: 'normal' },
+    { x: 250, y: 800, r: 13, vx: 50, vy: 20, type: 'sabertooth' },
     // В проходе №1 (снизу)
     { x: 650, y: 900, r: 14, vx: -40, vy: -25, type: 'normal' },
     // В проходе №2 (сверху)
@@ -73,8 +73,11 @@ registerLevel(3, {
     { x: 750, y: 500, r: 14, vx: 40, vy: 20, type: 'angler' },
     { x: 1750, y: 500, r: 15, vx: -45, vy: -20, type: 'angler' },
     { x: 2750, y: 500, r: 14, vx: 50, vy: 25, type: 'angler' }
+    // ... (старые рыбы) ...
+    // ⚡ ВОТ ОН, НАШ САБЛЕЗУБ:
+  
   ],
-
+ 
   music: 'music/level2.mp3',
   description: 'Узкие коридоры корабля. Остерегайтесь удильщиков.'
 });
