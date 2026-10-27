@@ -145,8 +145,8 @@ svgKrakenPupilLeft.src = 'assets/boss/kraken/kraken-pupil-left.svg';
 const svgKrakenPupilRight = new Image();
 svgKrakenPupilRight.src = 'assets/boss/kraken/kraken-pupil-right.svg';
 
-//const svgKrakenEyelid = new Image();
-//svgKrakenEyelid.src = 'assets/boss/kraken/kraken-eyelid.svg';
+const svgKrakenEyelid = new Image();
+svgKrakenEyelid.src = 'assets/boss/kraken/kraken-eyelid.svg';
 
 const svgKrakenMouth = new Image();
 svgKrakenMouth.src = 'assets/boss/kraken/kraken-mouth.svg';
@@ -1499,11 +1499,13 @@ function drawKraken() {
     }
   }
 
-  // 2.3 Веки
-  if (svgKrakenEyelid.complete && svgKrakenEyelid.naturalWidth > 0) {
+// 2.3 Веки (защита от отсутствия ассета)
+if (typeof svgKrakenEyelid !== 'undefined' &&
+    svgKrakenEyelid.complete &&
+    svgKrakenEyelid.naturalWidth > 0) {
     const lidShift = (1 - eyeHeightMult) * (headR * 0.15);
     ctx.drawImage(svgKrakenEyelid, offsetX, offsetY + lidShift, drawW, drawH);
-  }
+}
 
    // 2.4 Рот с зубами (Всегда почти открыт, чуть расширяется при атаке)
   if (svgKrakenMouth.complete && svgKrakenMouth.naturalWidth > 0) {
