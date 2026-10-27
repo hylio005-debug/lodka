@@ -17,3 +17,6 @@ desktop.ini
 # Настройки редакторов
 .vscode/
 .idea/
+
+.npm
+install
