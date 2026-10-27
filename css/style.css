@@ -1,24 +1,45 @@
-  html, body {
-    margin: 0; background: #0b1a2a; color: #eaf6ff;
-    font-family: system-ui, sans-serif; height: 100%;
-    overflow: hidden; overscroll-behavior: none; touch-action: none;
-  }
-  canvas { display: block; background: #1a3a58; cursor: crosshair; touch-action: none; }
+html, body {
+  margin: 0; background: #0b1a2a; color: #eaf6ff;
+  font-family: system-ui, sans-serif; height: 100%;
+  overflow: hidden; overscroll-behavior: none;
+  touch-action: manipulation; /* ⚡ позволяет pan-y, блокирует двойной тап-зум */
+}
 
-  .overlay {
+/* Игровой канвас — без прокрутки/зума (плеер не должен листать игру) */
+#game {
+  display: block; background: #1a3a58; cursor: crosshair;
+  touch-action: none !important;
+}
+
+/* Остальные canvas по умолчанию — тоже блокируем, 
+   но КРОМЕ тех, что внутри overlay */
+canvas {
+  display: block;
+  touch-action: none;
+}
+
+    .overlay {
     position: fixed; inset: 0; display: none;
-    align-items: center; justify-content: center;
-    padding: 20px; z-index: 10;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 15px 20px;
+    z-index: 10;
     background: radial-gradient(circle at 50% 30%, rgba(30, 80, 130, 0.85), rgba(8, 18, 32, 0.96) 70%);
-    overflow-y: auto; -webkit-overflow-scrolling: touch;
-  }
-  .overlay.show { display: flex; }
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y !important;
+    overscroll-behavior: contain;
+    }
+    .overlay.show { display: flex; }
 
-  .panel {
+    .panel {
     background: #0e2233; border: 1px solid #1e3a55; border-radius: 14px;
     padding: 28px 32px; max-width: 720px; width: 100%;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.7); text-align: center; margin: auto;
-  }
+    box-shadow: 0 20px 60px rgba(0,0,0,0.7); text-align: center;
+    margin: auto 0;       /* ⚡ центрирует по вертикали, но не обрезает при переполнении */
+    flex-shrink: 0;
+    }    
   .panel h1 { margin: 0 0 6px; font-size: 34px; letter-spacing: 1px; color: #7fd6ff; }
   .panel h2 { margin: 0 0 16px; font-size: 24px; }
   .panel p { font-size: 15px; opacity: 0.85; line-height: 1.55; margin: 8px 0; }
@@ -427,4 +448,99 @@ body.edit-layout #energybar.hidden,
 body.custom-layout #minimap-container.hidden,
 body.edit-layout #minimap-container.hidden {
   display: none !important;
+}
+
+/* ============================================
+   ПРОКРУТКА ЭКРАНОВ
+   ============================================ */
+
+
+
+/* Красивый видимый скроллбар во всех overlay */
+.overlay::-webkit-scrollbar {
+  width: 8px;
+}
+.overlay::-webkit-scrollbar-track {
+  background: rgba(7, 19, 32, 0.5);
+  border-radius: 4px;
+}
+.overlay::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #7fd6ff, #2b7fff);
+  border-radius: 4px;
+  border: 1px solid #0a1a28;
+}
+.overlay::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #a4e2ff, #3d8fff);
+}
+/* Firefox */
+.overlay {
+  scrollbar-width: thin;
+  scrollbar-color: #7fd6ff rgba(7, 19, 32, 0.5);
+}
+
+/* Панель паузы тоже скроллится */
+#pausePanel {
+  touch-action: pan-y !important;
+  scrollbar-width: thin;
+  scrollbar-color: #7fd6ff rgba(7, 19, 32, 0.5);
+}
+#pausePanel::-webkit-scrollbar {
+  width: 8px;
+}
+#pausePanel::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #7fd6ff, #2b7fff);
+  border-radius: 4px;
+}
+
+/* На мобилке в горизонтальном режиме — убираем лишние отступы,
+   чтобы кнопка Плей была видна */
+@media (max-height: 500px) {
+  #screen-splash .panel {
+    padding: 16px 24px !important;
+  }
+  #screen-splash .story-text {
+    display: none !important; /* Скрываем длинную историю, чтобы всё влезло */
+  }
+  #screen-splash .play-btn {
+    width: 90px !important;
+    height: 90px !important;
+    margin: 16px 0 8px !important;
+  }
+  #screen-splash .play-btn svg {
+    width: 36px !important;
+    height: 36px !important;
+  }
+  #screen-splash h1 {
+    font-size: 26px !important;
+  }
+  #screen-splash .version-badge {
+    margin-bottom: 6px !important;
+  }
+}
+
+/* ⚡ ВСЁ внутри overlay разрешает pan-y — чтобы карта/статистика прокручивались */
+.overlay,
+.overlay *,
+.overlay canvas,
+.overlay .panel,
+.overlay .story-text,
+.overlay .leaderboard,
+.overlay .controls-list {
+  touch-action: pan-y !important;
+}
+
+/* Кнопки и интерактивные элементы внутри overlay — манипуляция,
+   чтобы тапы работали без задержек, но скролл тоже не ломался */
+.overlay button,
+.overlay .btn,
+.overlay .choice-tab,
+.overlay .mode-tab,
+.overlay input,
+.overlay select {
+  touch-action: manipulation !important;
+}
+
+/* Карта в overlay — разрешаем скролл при перетаскивании */
+#mapCanvas {
+  touch-action: pan-y !important;
 }
