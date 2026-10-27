@@ -161,9 +161,49 @@ function goToSelectPlayer() {
 el('tabList').addEventListener('click', () => switchMode('list'));
 el('tabNick').addEventListener('click', () => switchMode('nick'));
 el('nickInput').addEventListener('input', updateNickPreview);
-el('nickInput').addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !el('confirmStudentBtn').disabled) el('confirmStudentBtn').click();
-});
+el('nickInput').addEventListener('input', updateNickPreview);
+
+// === МОБИЛЬНЫЙ ФИКС: ВВОД НИКА ===
+const nickInput = el('nickInput');
+if (nickInput) {
+  // 1. Нажатие "Enter" на клавиатуре: закрываем клавиатуру и жмем "Дальше"
+  nickInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      nickInput.blur();
+      setTimeout(() => {
+        const btn = el('confirmStudentBtn');
+        if (btn && !btn.disabled) btn.click();
+      }, 100);
+    }
+  });
+
+  // 2. При клике на поле — прокручиваем экран, чтобы поле было по центру (над клавиатурой)
+  nickInput.addEventListener('focus', () => {
+    setTimeout(() => {
+      nickInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 300);
+  });
+
+  // 3. Умный отступ, если открылась виртуальная клавиатура
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', () => {
+      const selectScreen = el('screen-select');
+      if (!selectScreen || !selectScreen.classList.contains('show')) return;
+      
+      // Вычисляем высоту клавиатуры
+      const keyboardHeight = window.innerHeight - window.visualViewport.height;
+      
+      if (keyboardHeight > 100) {
+        // Если клавиатура открыта, добавляем отступ снизу, чтобы кнопки не прятались
+        selectScreen.style.paddingBottom = (keyboardHeight + 40) + 'px';
+      } else {
+        // Если клавиатура закрыта, возвращаем как было
+        selectScreen.style.paddingBottom = '';
+      }
+    });
+  }
+}
 
 el('classSelect').addEventListener('change', (e) => {
   const klass = e.target.value;

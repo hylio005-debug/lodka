@@ -112,6 +112,7 @@ function stickEnd() {
 }
 
 joystickBase.addEventListener('pointerdown', e => {
+  if (typeof isEditMode !== 'undefined' && isEditMode) return;
   e.preventDefault();
   joystickBase.setPointerCapture(e.pointerId);
   stickStart(e.clientX, e.clientY, e.pointerId);
@@ -149,6 +150,7 @@ function thrustUp() {
 }
 
 thrustBtn.addEventListener('pointerdown', e => {
+  if (typeof isEditMode !== 'undefined' && isEditMode) return;
   e.preventDefault();
   thrustBtn.setPointerCapture(e.pointerId);
   thrustDown(e.pointerId);
@@ -508,6 +510,10 @@ function prepareRun() {
   updateMinimapVisibility();  // <--- ЭТА СТРОКА ДОЛЖНА БЫТЬ
   updateHud();
   checkOrientation();
+    // Принудительно применяем сохранённый лэйаут при старте уровня
+  if (typeof applyLayoutFromStorage === 'function') {
+    applyLayoutFromStorage();
+  }
 }
 
 function startActualRun() {

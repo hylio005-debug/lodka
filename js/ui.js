@@ -23,7 +23,7 @@ const hudEls = [
   el('hud'), el('hpbar'), el('hptext'), el('hint'),
   el('playerBadge'), el('gameControls'), el('startHint'),
   el('mobileControls'), el('thrustButton'), el('mobileArtifacts'),
-  el('cooldownPanel')
+  el('cooldownPanel'), el('energybar'), el('energytext')
 ];
 
 function showScreen(name) {
