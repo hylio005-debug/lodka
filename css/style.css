@@ -544,3 +544,36 @@ body.edit-layout #minimap-container.hidden {
 #mapCanvas {
   touch-action: pan-y !important;
 }
+
+
+/* ============================================
+   ЖЕЛЕЗОБЕТОННЫЙ ФИКС ДЛЯ СКРЫТИЯ ЭЛЕМЕНТОВ
+   ============================================ */
+
+/* Если у элемента есть класс .hidden — его не должно быть видно НИКОГДА,
+   даже если у него есть правила display: block !important от мобильной верстки */
+#thrustButton.hidden,
+#mobileControls.hidden,
+#mobileArtifacts.hidden,
+#minimap-container.hidden,
+#hpbar.hidden,
+#energybar.hidden,
+#cooldownPanel.hidden {
+    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+@media (max-width: 700px) {
+  #ctrlPanel {
+    top: calc(10px + env(safe-area-inset-top, 0px)) !important;
+    right: calc(10px + env(safe-area-inset-right, 0px)) !important;
+    gap: 4px !important;
+  }
+  #fsBtn, #winBtn, #muteBtn {
+    width: 36px !important;
+    height: 36px !important;
+    font-size: 16px !important;
+  }
+}
