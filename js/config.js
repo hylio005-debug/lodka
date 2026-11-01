@@ -23,8 +23,8 @@ let isPvpDead = false;
 let pvpDeathTimer = 0;
 let lastFlagOwnerTeam = null;
 // 🔥 ЕДИНАЯ ВЕРСИЯ ИГРЫ — меняй ТОЛЬКО здесь!
-const GAME_VERSION = '5.3';
-const GAME_CODENAME = 'Сенсор норм)))';  // подзаголовок на заставке
+const GAME_VERSION = '6.1';
+const GAME_CODENAME = 'Сетевая Бездна01';  // подзаголовок на заставке
 const GAME_TITLE = 'Погружение';
 
 // ================================================================
