@@ -18,20 +18,19 @@ let pvpGameEnded = false;
 
 
 function getSocketURL() {
-  // 🌐 Если нажата кнопка "Интернет" — подключаемся к продакшену
-  if (currentServerMode === 'online') {
-    return 'https://lodka777.ru';
-  }
-
-  // 🏠 Если "Локальная сеть":
-  const host = window.location.hostname;
-  const port = window.location.port;
-
-  // Если игра открыта на порту 3000 (через node server.js) — используем его же
-  if (port === '3000') {
+  // 1. Если мы на локальном сервере (node server.js), порт будет 3000.
+  // Подключаемся к текущему адресу (ws://localhost:3000 или ws://192.168.x.x:3000)
+  if (window.location.port === '3000') {
     return window.location.origin;
   }
-  // Если через Live Server (порт 5500) — шлём на 3000
+
+  // 2. Если мы на продакшене (https://lodka777.ru)
+  // Подключаемся к текущему домену (wss://lodka777.ru)
+  if (window.location.protocol === 'https:') {
+    return window.location.origin;
+  }
+
+  // 3. Если мы на Live Server (например, порт 5500), шлём на локальный сервер node
   return 'http://localhost:3000';
 }
 
