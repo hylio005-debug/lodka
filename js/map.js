@@ -323,33 +323,7 @@ el('mapCanvas').addEventListener('click', (e) => {
 });
 
 
-// ---------- Клик по карте ----------
-el('mapCanvas').addEventListener('click', (e) => {
-  const mapCanvas = el('mapCanvas');
-  const rect = mapCanvas.getBoundingClientRect();
-  const scaleX = mapCanvas.width / rect.width;
-  const scaleY = mapCanvas.height / rect.height;
-  const clickX = (e.clientX - rect.left) * scaleX;
-  const clickY = (e.clientY - rect.top) * scaleY;
 
-  const mW = mapCanvas.width;
-  const mH = mapCanvas.height;
-
-  for (const meta of LEVELS_META) {
-    const px = meta.mapX * mW;
-    const py = (1 - meta.mapY) * mH;
-    const dist = Math.hypot(clickX - px, clickY - py);
-    if (dist <= 40) {
-      if (meta.id <= playerProgress) {
-        currentLevel = meta.id;
-        startLevel(meta.id);
-      } else {
-        showToast('🔒 Сектор закрыт. Пройдите предыдущие на ' + UNLOCK_THRESHOLD + '%+');
-      }
-      return;
-    }
-  }
-});
 
 // ---------- Пульсация карты ----------
 setInterval(() => {

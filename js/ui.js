@@ -23,7 +23,8 @@ const hudEls = [
   el('hud'), el('hpbar'), el('hptext'), el('hint'),
   el('playerBadge'), el('gameControls'), el('startHint'),
   el('mobileControls'), el('thrustButton'), el('mobileArtifacts'),
-  el('cooldownPanel'), el('energybar'), el('energytext')
+  el('cooldownPanel'), el('energybar'), el('energytext'),
+  el('ctfHud')
 ];
 
 function showScreen(name) {
@@ -130,19 +131,43 @@ document.addEventListener('webkitfullscreenchange', updateFsIcon);
 // ---------- Пауза ----------
 function togglePause() {
   if (!started) return;
+
+  // Проверяем, идет ли сейчас PvP
+  const isPvP = (typeof currentLevel !== 'undefined') && currentLevel.startsWith('PVP');
+  const po = el('pauseOverlay');
+
+  if (isPvP) {
+    // В PvP мы не замораживаем игру (не ставим paused = true), а просто показываем меню
+    if (po.classList.contains('show')) {
+      po.classList.remove('show');
+      if (musicEnabled) switchMusic('game');
+    } else {
+      po.classList.add('show');
+      if (musicEnabled && typeof gameMusic !== 'undefined') gameMusic.pause();
+      stopMotor();
+      
+      // Сбрасываем нажатия, чтобы лодка не летела по инерции
+      mouse.down = false;
+      mouse.rightDown = false;
+      if (typeof thrust !== 'undefined') thrust.pressed = false;
+    }
+    return; // Выходим, игра продолжает работать!
+  }
+
+  // Для одиночной игры — обычная пауза
   paused = !paused;
-  el('pauseOverlay').classList.toggle('show', paused);
+  po.classList.toggle('show', paused);
+  
   if (paused) {
     if (musicEnabled && typeof menuMusic !== 'undefined') menuMusic.pause();
     if (musicEnabled && typeof gameMusic !== 'undefined') gameMusic.pause();
     stopMotor();
     updateArtifactUI();
     
-    // Сбрасываем нажатия, чтобы лодка не поплыла сама после паузы
     mouse.down = false;
     mouse.rightDown = false;
     if (typeof thrust !== 'undefined') thrust.pressed = false;
-    if (typeof winchState !== 'undefined') winchState = 'idle'; // Сбрасываем лебедку
+    if (typeof winchState !== 'undefined') winchState = 'idle';
   } else if (musicEnabled) {
     switchMusic('game');
   }

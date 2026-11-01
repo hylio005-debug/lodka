@@ -135,6 +135,9 @@ function setServerStatus(state, text) {
 
 
 function goToSelectPlayer() {
+  if (typeof socket !== 'undefined' && socket && myRoomCode) {
+    socket.emit('player_abandon', { code: myRoomCode });
+  }
   started = false; running = false; paused = false;
   el('pauseOverlay').classList.remove('show');
   if (typeof stickEnd === 'function') stickEnd();

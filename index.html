@@ -32,7 +32,12 @@
   <div id="bossbar-fill"></div>
   <div id="bossbar-text">🐙 КРАКЕН</div>
 </div>
-
+<!-- HUD для Захвата Флага -->
+<div id="ctfHud" class="hidden" style="position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 20px; font-family: monospace; font-size: 16px; font-weight: bold; color: #fff; text-shadow: 0 0 5px #000; z-index: 50; background: rgba(0,0,0,0.6); padding: 8px 20px; border-radius: 10px; border: 1px solid #1e3a55; pointer-events: none;">
+  <div id="blueScore" style="color: #7fd6ff; width: 120px; text-align: right;">СИНИЕ: 0.0</div>
+  <div id="matchTimer" style="color: #ffd166; width: 60px; text-align: center;">5:00</div>
+  <div id="redScore" style="color: #ff6b6b; width: 120px; text-align: left;">КРАСНЫЕ: 0.0</div>
+</div>
 <div id="gameControls" class="hidden">
   <button class="gc-btn" id="pauseBtn" title="Пауза (Esc)">⏸</button>
   <button class="gc-btn" id="restartBtn" title="Рестарт">🔄</button>
@@ -150,6 +155,7 @@
 
 <!-- Экран: Мультиплеер (Лобби) -->
 <!-- Экран: Мультиплеер (Лобби) -->
+<!-- Экран: Мультиплеер (Лобби) -->
 <div id="screen-multiplayer" class="overlay">
   <div class="panel" style="max-width: 800px;">
     <h2 style="color: #7fd6ff;">⚔️ Дуэль по сети</h2>
@@ -160,12 +166,50 @@
       <button class="btn secondary" id="modeOnlineBtn" style="flex: 1; padding: 10px; background: transparent; color: #7fd6ff;">🌐 Интернет</button>
     </div>
 
-    <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; margin: 24px 0;">
+    <!-- Блок лобби (показывается только когда мы в комнате) -->
+    <div id="mpLobby" style="display: none; width: 100%;">
+      <div style="padding: 20px; background: rgba(110, 231, 135, 0.05); border: 1px solid #6ee787; border-radius: 10px;">
+        <h3 style="color: #6ee787; margin-top: 0;">Ожидание игроков...</h3>
+        <div id="mpPlayersList" style="margin-bottom: 15px; min-height: 100px; background: #0a1a28; border: 1px solid #1e3a55; border-radius: 8px; padding: 10px; font-size: 14px;">
+          <!-- Сюда будут выводиться игроки -->
+        </div>
+
+         <!-- ⬇️ НОВЫЙ БЛОК: КНОПКА ГОТОВНОСТИ И ТАЙМЕР ⬇️ -->
+        <div id="mpCountdown" style="display: none; font-size: 48px; color: #ffd166; text-align: center; font-weight: bold; margin-bottom: 15px; text-shadow: 0 0 20px rgba(255,209,102,0.8);">5</div>
+        <button class="btn secondary" id="mpAddBotBtn" style="width: 100%; font-size: 16px; margin-bottom: 10px; display: none;">🤖 Добавить бота</button>
+        <button class="btn" id="mpReadyBtn" style="width: 100%; font-size: 18px; margin-bottom: 10px; background: #14324a; color: #7fd6ff; display: none;">✅ Я ГОТОВ</button>
+        
+       
+        <button class="btn gold" id="mpStartBtn" style="width: 100%; font-size: 18px; display: none;">▶ НАЧАТЬ ИГРУ</button>
+        <button class="btn secondary" id="mpLeaveLobbyBtn" style="width: 100%; margin-top: 10px;">← Выйти из лобби</button>
+      </div>
+    </div>
+
+    <!-- Блок создания и списка (скрывается когда мы в лобби) -->
+    <div id="mpMainMenu" style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; margin: 24px 0;">
+      
       <!-- Создать комнату -->
       <div style="flex: 1; min-width: 250px; padding: 20px; background: rgba(43, 127, 255, 0.1); border: 1px solid #2b7fff; border-radius: 10px;">
         <h3 style="color: #7fd6ff; margin-top: 0;">Создать</h3>
+        
+        <input type="text" id="mpNickname" placeholder="Ваш ник" maxlength="12" style="display: none;">
         <input type="text" id="mpRoomName" placeholder="Название комнаты" maxlength="20" style="width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 8px; border: 1px solid #1e3a55; background: #0a1a28; color: #fff;">
+        
+        <select id="mpMode" style="width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 8px; border: 1px solid #1e3a55; background: #0a1a28; color: #fff;">
+          <option value="duel">⚔️ Дуэль (1x1)</option>
+          <option value="ctf">🏴 Захват флага (3x3)</option>
+        </select>
+
+        <!-- ⬇️ ВОТ ПРАВИЛЬНЫЙ БЛОК ВЫБОРА ОРУЖИЯ ⬇️ -->
+        <select id="mpWeapon" style="width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 8px; border: 1px solid #1e3a55; background: #0a1a28; color: #fff;">
+          <option value="torpedo">🚀 Ракетница</option>
+          <option value="cryo">❄️ Крио-пушка</option>
+        </select>
+          <!-- ⬆️ КОНЕЦ ⬆️ -->
+        
+
         <input type="password" id="mpCreatePassword" placeholder="Пароль (необязательно)" style="width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 8px; border: 1px solid #1e3a55; background: #0a1a28; color: #fff;">
+        
         <button class="btn" id="mpCreateBtn" style="width: 100%;">🏠 Создать комнату</button>
       </div>
 
@@ -289,6 +333,7 @@
     <div id="stats"></div>
     <div id="sendStatus" style="margin-top:12px; text-align:center; font-family:monospace; font-size:13px;"></div>
     <div style="text-align:center; margin-top:16px;">
+      <button class="btn gold" id="statsLobbyBtn" style="display:none;">🔄 В лобби</button>
       <button class="btn" id="statsRestart">Пройти заново</button>
       <button class="btn secondary" id="statsMap">← К карте</button>
       <button class="btn secondary" id="statsMenu">В меню</button>
@@ -426,7 +471,10 @@
 <script src="levels/training3.js"></script>
 <script src="levels/training4.js"></script>
 <script src="levels/training5.js"></script>
+<script src="levels/pvp.js"></script>
+<script src="levels/pvp_ctf.js"></script> <!-- ⚡ ДОБАВЬ ЭТУ СТРОЧКУ -->
 <script src="js/config.js"></script>
+
 <script src="js/audio.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/player.js"></script>
@@ -438,7 +486,7 @@
 <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
 
 <script src="js/multiplayer.js"></script>
-<script src="levels/pvp.js"></script>
+
 
 </body>
 </html>

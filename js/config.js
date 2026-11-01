@@ -6,7 +6,22 @@
 // ================================================================
 //  js/config.js — КОНСТАНТЫ И НАСТРОЙКИ
 // ================================================================
-
+// --- CTF Состояние ---
+let ctfFlag = { 
+  x: 1600, y: 550, 
+  state: 'center', // 'center', 'carried', 'dropped'
+  carrierId: null, 
+  carrierTeam: null 
+};
+let myWeapon = 'torpedo';
+let blueCaptureTime = 0;
+let redCaptureTime = 0;
+let matchTime = 300; // 5 минут
+let isPvpFrozen = false;
+let freezeReturnTimer = 0;
+let isPvpDead = false;
+let pvpDeathTimer = 0;
+let lastFlagOwnerTeam = null;
 // 🔥 ЕДИНАЯ ВЕРСИЯ ИГРЫ — меняй ТОЛЬКО здесь!
 const GAME_VERSION = '5.3';
 const GAME_CODENAME = 'Сенсор норм)))';  // подзаголовок на заставке
@@ -256,6 +271,30 @@ let zoom = 1;
 
 function viewW() { return W / zoom; }
 function viewH() { return H / zoom; }
+// ================================================================
+//  УТИЛИТА: генерация баз из точек старта
+//  Один источник правды: start-координаты + baseRadius
+// ================================================================
+function getBasesFromLevel(levelData) {
+  if (!levelData) return null;
+
+  // Если базs заданы вручную — используем их
+  if (levelData.bases && levelData.bases.blue) return levelData.bases;
+
+  if (!levelData.spawn) return null;
+
+  const r = levelData.baseRadius || 80;
+
+  return {
+    blue: { x: levelData.spawn.blue.x, y: levelData.spawn.blue.y, r: r },
+    red:  { x: levelData.spawn.red.x,  y: levelData.spawn.red.y,  r: r }
+  };
+}
+
+  
+
+// Счётчик заморозок в дуэли (кто сколько раз заморозил врага)
+let freezeScore = { blue: 0, red: 0 };
 
 // ---------- ДРОН ----------
 const sub = {

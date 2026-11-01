@@ -1,6 +1,6 @@
 // ================================================================
 //  js/game.js — ЛОГИКА, ЦИКЛ, СТАТИСТИКА, ОТПРАВКА
-//  Игра «Погружение» v4.2 (Кракен)
+//  Игра «Погружение» v5.3 (CTF Support)
 // ================================================================
 
 // ---------- Ввод: мышь ----------
@@ -25,7 +25,6 @@ canvas.addEventListener('mousedown', e => {
     mouse.down = true; 
     e.preventDefault(); 
   }
-  // (Остальной код для ПКМ и СКМ оставь как есть)
   if (e.button === 2) { // ПКМ (Лебедка)
     mouse.rightDown = true;
     if (started && !paused && inventory.winch && winchCooldown <= 0 && winchState === 'idle') {
@@ -250,6 +249,11 @@ function updateWorldFromLevel(data) {
   levelFloorTopColor = data.floorTopColor || '#6b8e5a';
   levelHillColor = data.hillColor || '#3f6039';
   levelWaterTint = data.waterTint || 'rgba(100, 180, 255, 0.04)';
+  // ⚡ АВТО-ГЕНЕРАЦИЯ БАЗ из spawn + baseRadius
+  const generatedBases = getBasesFromLevel(data);
+  if (generatedBases) {
+    data.bases = generatedBases;
+  }
 
   if (data.maxThrust) sub.maxThrust = data.maxThrust;
   if (data.thrustAccel) sub.thrustAccel = data.thrustAccel;
@@ -258,7 +262,7 @@ function updateWorldFromLevel(data) {
   if (data.fallBlend) sub.fallBlend = data.fallBlend;
 
   fishes.length = 0;
-    (data.fishes || []).forEach(f => {
+  (data.fishes || []).forEach(f => {
     fishes.push({
       x: f.x, y: f.y, r: f.r || 14,
       vx: f.vx || 30, vy: f.vy || 15,
@@ -272,14 +276,20 @@ function updateWorldFromLevel(data) {
     });
   });
 
-  // Выбираем старт в зависимости от того, кто мы
-  if (currentLevel === 'PVP' && typeof amIPlayer1 !== 'undefined' && !amIPlayer1 && data.start2) {
-    sub.x = data.start2.x;
-    sub.y = data.start2.y;
-    sub.angle = Math.PI; // Смотрим влево
+  // Спавн (единный для всех PVP-режимов)
+  if (currentLevel.startsWith('PVP') && data.spawn && myTeam) {
+    const mySpawn = (myTeam === 'red') ? data.spawn.red : data.spawn.blue;
+    sub.x = mySpawn.x;
+    sub.y = mySpawn.y;
+    sub.angle = (myTeam === 'red') ? Math.PI : 0;
+  } else if (data.start) {
+    // Одиночные уровни — старое поле start
+    sub.x = data.start.x;
+    sub.y = data.start.y;
+    sub.angle = 0;
   } else {
-    sub.x = data.start ? data.start.x : 100;
-    sub.y = data.start ? data.start.y : 980;
+    sub.x = 100;
+    sub.y = 980;
     sub.angle = 0;
   }
   sub.vx = 0; sub.vy = 0;
@@ -314,7 +324,6 @@ function fireWinch() {
   let targetY = rawY;
   let hitBoss = false;
 
-   // Ищем стену и Кракена по пути
   const wallHit = raycastWall(sub.x, sub.y, rawX, rawY, 5);
   let bossHit = null;
   if (currentLevelData && currentLevelData.boss === 'kraken' && !krakenDefeated) {
@@ -334,7 +343,6 @@ function fireWinch() {
     }
   }
 
-  // Берём то, что ближе
   const wallT = wallHit ? wallHit.t : Infinity;
   const bossT = bossHit ? bossHit.t : Infinity;
 
@@ -343,7 +351,6 @@ function fireWinch() {
     targetY = bossHit.y;
     hitBoss = true;
   } else if (wallHit) {
-    // Ставим крюк чуть перед стеной
     targetX = wallHit.x - fx * 6;
     targetY = wallHit.y - fy * 6;
   }
@@ -375,51 +382,54 @@ function toggleFlashlight() {
 function fireTorpedo() {
   const fx = Math.cos(sub.angle);
   const fy = Math.sin(sub.angle);
-  torpedoes.push({
-    x: sub.x + fx * 20,
-    y: sub.y + fy * 20,
-    vx: fx * TORPEDO_SPEED,
-    vy: fy * TORPEDO_SPEED,
-    life: 2.0,
-    angle: sub.angle
-  });
+  const isCryoShot = (typeof myWeapon !== 'undefined' && myWeapon === 'cryo');
+
   torpedoCooldown = TORPEDO_COOLDOWN_MAX;
   soundRing();
   lastFirePos = { x: sub.x, y: sub.y };
   lastFireTime = elapsed;
 
-  // Отправка выстрела по сети
-  if (currentLevel === 'PVP' && typeof mpSendShoot === 'function' && myRoomCode) {
-    console.log('📡 1. КЛИЕНТ ОТПРАВИЛ ВЫСТРЕЛ НА СЕРВЕР');
-    mpSendShoot(sub.x + fx * 20, sub.y + fy * 20, fx * TORPEDO_SPEED, fy * TORPEDO_SPEED, sub.angle);
+  if (currentLevel.startsWith('PVP')) {
+    // ⚡ PvP: пулю создаёт ТОЛЬКО сервер. Клиент не пушит в torpedoes[].
+    // Сервер разошлёт 'bullet_spawn' ВСЕМ, включая стрелка.
+    if (typeof mpSendShoot === 'function' && myRoomCode) {
+      mpSendShoot(sub.x + fx * 20, sub.y + fy * 20, fx * TORPEDO_SPEED, fy * TORPEDO_SPEED, sub.angle, isCryoShot);
+    }
+  } else {
+    // Одиночные уровни: пуля создаётся локально (сервера нет)
+    torpedoes.push({
+      x: sub.x + fx * 20,
+      y: sub.y + fy * 20,
+      vx: fx * TORPEDO_SPEED,
+      vy: fy * TORPEDO_SPEED,
+      life: 2.0,
+      angle: sub.angle,
+      isCryo: isCryoShot
+    });
   }
 }
 
 // ---------- Запуск уровня ----------
 function startLevel(levelId) {
+  currentLevel = String(levelId); // 
   if (typeof LEVELS === 'undefined' || !LEVELS[levelId]) {
     showToast('⚠️ Уровень ' + levelId + ' не найден');
     return;
   }
   
-  // Принудительно будим аудио-контекст (из-за политики браузеров)
-  if (typeof unlockAudio === 'function') {
-    unlockAudio();
-  }
+  if (typeof unlockAudio === 'function') unlockAudio();
   
   currentLevelData = LEVELS[levelId];
   updateWorldFromLevel(currentLevelData);
   prepareRun();
   showScreen(null);
   
-  // Переключение музыки уровня
   if (gameMusic && musicEnabled) {
     const musicSrc = currentLevelData.music || 'music/menu.mp3';
     const source = gameMusic.querySelector('source');
     
     if (source) {
       const currentSrc = source.src || '';
-      // Если трек отличается от того, что играет сейчас
       if (!currentSrc.includes(musicSrc)) {
         source.src = musicSrc;
         gameMusic.load();
@@ -453,6 +463,30 @@ function prepareRun() {
   finishBlockedWarning = false;
   sub.inkBlind = 0;
 
+    // Сброс CTF — ВСЕГДА, даже если уровень обычный.
+  // Иначе после CTF-матча ctfFlag остаётся в состоянии 'carried',
+  // и значок флага висит над лодкой в одиночных уровнях.
+  if (currentLevel === 'PVP_CTF' && currentLevelData && currentLevelData.flagSpawn) {
+    ctfFlag.x = currentLevelData.flagSpawn.x;
+    ctfFlag.y = currentLevelData.flagSpawn.y;
+  } else {
+    ctfFlag.x = 1600;
+    ctfFlag.y = 550;
+  }
+  ctfFlag.state = 'center';
+  ctfFlag.carrierId = null;
+  ctfFlag.carrierTeam = null;
+  ctfFlag.vy = 0;
+  ctfFlag.onFloor = false;
+  ctfFlag.captureProgress = 0;
+  ctfFlag.captureTeam = null;
+  blueCaptureTime = 0;
+  redCaptureTime = 0;
+  lastFlagOwnerTeam = null;
+  matchTime = 300;
+  isPvpFrozen = false;
+  freezeReturnTimer = 0;
+
   krakenActive = false;
   krakenDefeated = false;
   krakenHp = 300;
@@ -464,10 +498,10 @@ function prepareRun() {
   krakenFlashType = 'ice';
   krakenSinkT = 0;
   krakenWakeT = 0;
-  
   krakenRiseT = 0;
   krakenBlinkT = 0;
   krakenSquintT = 0;
+  
   if (currentLevelData && currentLevelData.bossPos) {
     krakenPos = { ...currentLevelData.bossPos };
   } else {
@@ -477,6 +511,7 @@ function prepareRun() {
   inkClouds = [];
   tentacleWarnings = [];
   sub.tentacleInvuln = 0;
+  
   const bb = el('bossbar');
   if (bb) bb.classList.add('hidden');
 
@@ -495,22 +530,20 @@ function prepareRun() {
   started = true;
   running = true;
   
-  // Ожидание старта
   isWaiting = true;
   const sh = el('startHint');
   if (sh) sh.classList.remove('hidden');
 
-  // ⚡ ДЛЯ PVP СТАРТУЕМ СРАЗУ, БЕЗ НАЖАТИЯ ЛКМ
-  if (currentLevel === 'PVP') {
+  if (currentLevel.startsWith('PVP')) {
     isWaiting = false;
     if (sh) sh.classList.add('hidden');
   }
   
   updateArtifactUI();
-  updateMinimapVisibility();  // <--- ЭТА СТРОКА ДОЛЖНА БЫТЬ
+  updateMinimapVisibility();
   updateHud();
   checkOrientation();
-    // Принудительно применяем сохранённый лэйаут при старте уровня
+
   if (typeof applyLayoutFromStorage === 'function') {
     applyLayoutFromStorage();
   }
@@ -582,6 +615,12 @@ function updateAmbientBubbles(dt) {
 }
 
 function applyDamage(a, source) {
+  if (typeof currentLevel === 'string' && currentLevel.startsWith('PVP')) {
+    // В PvP урон от стен и рыб НЕ применяем локально — сервер не знает
+    if (source === 'wall') soundWallHit();
+    else if (source === 'fish') soundFishHit();
+    return;
+  }
   sub.hp -= a;
   sub.invuln = 0.35;
   if (source === 'wall') soundWallHit();
@@ -591,9 +630,17 @@ function applyDamage(a, source) {
 // ---------- Главный update ----------
 function update(dt) {
   if (!running || !started || paused) return;
-    // ==========================================
-  // 🛡️ АНТИ-NaN БРОНЯ (Защита от телепортации)
-  // ==========================================
+
+    // ⬇️ ДОБАВЬ ЭТОТ БЛОК ⬇️
+  // Блокируем управление при открытом меню паузы в PvP
+  if (currentLevel && currentLevel.startsWith('PVP') && el('pauseOverlay').classList.contains('show')) {
+      mouse.down = false;
+      mouse.rightDown = false;
+      if (typeof thrust !== 'undefined') thrust.pressed = false;
+  }
+  // ⬆️ ⬆️ ⬆️
+  
+  // 🛡️ АНТИ-NaN БРОНЯ
   if (isNaN(sub.x) || !isFinite(sub.x)) sub.x = 100;
   if (isNaN(sub.y) || !isFinite(sub.y)) sub.y = 100;
   if (isNaN(sub.vx) || !isFinite(sub.vx)) sub.vx = 0;
@@ -608,28 +655,162 @@ function update(dt) {
   if (isNaN(camera.y) || !isFinite(camera.y)) camera.y = 0;
   
   if (isNaN(winchHook.x) || isNaN(winchHook.y)) winchState = 'idle';
-  // ==========================================
-   const prevX = sub.x;
-   const prevY = sub.y;
   
+   const prevX = sub.x;
+  const prevY = sub.y;
+
+  // ============================================================
+  // ОБНОВЛЕНИЕ ВРАГОВ (вынесено в начало, чтобы работать при заморозке)
+  // ============================================================
+  // Визуальная симуляция пуль — только движение. Удаление делает СЕРВЕР.
+  if (currentLevel.startsWith('PVP') && typeof remoteTorpedoes !== 'undefined') {
+    for (let i = remoteTorpedoes.length - 1; i >= 0; i--) {
+      const t = remoteTorpedoes[i];
+      t.x += t.vx * dt;
+      t.y += t.vy * dt;
+      t.life -= dt;
+      
+      // Удаляем локально ТОЛЬКО если жизни не осталось (страховка от memory leak)
+      if (t.life <= 0) {
+        remoteTorpedoes.splice(i, 1);
+      }
+      // Коллизию со стенами не проверяем — сервер сам пришлёт 'bullet_despawn'
+    }
+  }
+
+  if (currentLevel.startsWith('PVP') && typeof opponents !== 'undefined') { 
+    for (const id in opponents) {
+      const opp = opponents[id];
+      if (!opp.visible) continue;
+
+      if (opp.targetX !== undefined) {
+        if (!Number.isFinite(opp.x) || !Number.isFinite(opp.y)) {
+          opp.x = opp.targetX;
+          opp.y = opp.targetY;
+        } else {
+          opp.x += (opp.targetX - opp.x) * 0.25;
+          opp.y += (opp.targetY - opp.y) * 0.25;
+        }
+        let diff = opp.targetAngle - opp.angle;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        opp.angle += diff * 0.25;
+      }
+
+      const oppTeam = opp.team || (window.pvpPlayersInfo[id]?.team);
+      const isEnemy = oppTeam !== myTeam;
+
+      if (sub.hp > 0) {
+
+
+        // 3. Вражеские торпеды пролетают мимо нас (визуал/звук)
+        // Урон и заморозку применяет СЕРВЕР через 'your_hp' и 'get_frozen'.
+        // Удаление пули делает СЕРВЕР через 'bullet_despawn'.
+        if (typeof remoteTorpedoes !== 'undefined' && !isPvpFrozen) {
+          for (let i = remoteTorpedoes.length - 1; i >= 0; i--) {
+            const t = remoteTorpedoes[i];
+            if (t.team === myTeam) continue;   // своя — пропускаем
+            const dx = t.x - sub.x;
+            const dy = t.y - sub.y;
+            if (dx*dx + dy*dy < (sub.r + 10) * (sub.r + 10)) {
+              soundWallHit();
+              break;
+            }
+          }
+        }
+
+        // 4. Таран
+        if (isEnemy) {
+          const rdx = sub.x - opp.x;
+          const rdy = sub.y - opp.y;
+          const rdist = Math.hypot(rdx, rdy);
+          if (rdist < sub.r * 2 && sub.invuln <= 0) {
+            sub.invuln = 1.0;
+            sub.hp -= 15; 
+            if (typeof mpSendHit === 'function') mpSendHit(id, 15);
+            const d = rdist || 1;
+            sub.vx = (rdx / d) * 300;
+            sub.vy = (rdy / d) * 300;
+            soundWallHit();
+          }
+        }
+      }
+    }
+  }
+  // ============================================================
+
+  // 💀 МЁРТВ: ждём респавн, не управляем лодкой
+  if (typeof isPvpDead !== 'undefined' && isPvpDead) {
+    syncMyPvpPosition(dt);
+    updateCamera();
+    updateHud();
+    return;
+  }
+
+  // 🧊 ЗАМОРОЗКА: тянет на базу сквозь стены, полная неуязвимость
+  if (isPvpFrozen) {
+    freezeReturnTimer -= dt;
+
+    // Постоянная неуязвимость во время перетаскивания
+    sub.invuln = Math.max(sub.invuln, 0.5);
+
+    if (currentLevelData && currentLevelData.bases) {
+      const base = currentLevelData.bases[myTeam === 'blue' ? 'blue' : 'red'];
+      const dx = base.x - sub.x;
+      const dy = base.y - sub.y;
+      const dist = Math.hypot(dx, dy);
+
+      if (dist > 10 && freezeReturnTimer > 0) {
+        sub.x += (dx / dist) * 500 * dt;
+        sub.y += (dy / dist) * 500 * dt;
+        sub.angle = Math.atan2(dy, dx);
+        sub.vx = 0; sub.vy = 0;
+      } else {
+        isPvpFrozen = false;
+        sub.invuln = 2.0;
+        showToast('🧊 Вы оттаяли! Щит активен.');
+      }
+    } else {
+      sub.vx = 0; sub.vy = 0;
+      if (freezeReturnTimer <= 0) {
+        isPvpFrozen = false;
+        sub.invuln = 2.0;
+        showToast('🧊 Вы оттаяли! Щит активен.');
+      }
+    }
+
+    mouse.down = false;
+    if (typeof thrust !== 'undefined') thrust.pressed = false;
+  } else {
+    // Твой обычный код управления лодкой (поворот, движение)
+    // ... (оставь как было)
+  }
+
+
+
   // Если ждем старта — только анимация
   if (isWaiting) {
     sub.animTime += dt;
-      // Если координаты лодки сломались — принудительно возвращаем её на старт
-  if (isNaN(sub.x) || isNaN(sub.y) || sub.x < -100 || sub.y < -100) {
-    sub.x = 100; 
-    sub.y = 980;
-    sub.vx = 0; 
-    sub.vy = 0;
-    sub.hp = 100; // На всякий случай
-    showToast('⚠️ Координаты восстановлены');
-  }
+    if (isNaN(sub.x) || isNaN(sub.y) || sub.x < -100 || sub.y < -100) {
+      sub.x = 100; 
+      sub.y = 980;
+      sub.vx = 0; 
+      sub.vy = 0;
+      sub.hp = 100;
+      showToast('⚠️ Координаты восстановлены');
+    }
     if (!isTouch && mouse.down) startActualRun();
     if (isTouch && thrust.pressed) startActualRun();
     return; 
   }
 
   sub.animTime += dt;
+
+  // Обновление режима Захвата Флага
+  if (currentLevel === 'PVP_CTF') {
+    updateCTF(dt);
+    if (!running) return;
+  }
 
   // Таймеры артефактов
   if (winchCooldown > 0) winchCooldown -= dt;
@@ -658,17 +839,20 @@ function update(dt) {
 
   // Управление
   let targetAngle = null;
-  if (isTouch && stick.active) {
-    const len = Math.hypot(stick.dx, stick.dy);
-    if (len > 0.15) targetAngle = Math.atan2(stick.dy, stick.dx);
-  } else if (!isTouch) {
-    const dxm = mouse.x - sub.x, dym = mouse.y - sub.y;
-    if (Math.hypot(dxm, dym) > 30) targetAngle = Math.atan2(dym, dxm);
+  if (!isPvpFrozen) {
+    if (isTouch && stick.active) {
+      const len = Math.hypot(stick.dx, stick.dy);
+      if (len > 0.15) targetAngle = Math.atan2(stick.dy, stick.dx);
+    } else if (!isTouch) {
+      const dxm = mouse.x - sub.x, dym = mouse.y - sub.y;
+      if (Math.hypot(dxm, dym) > 30) targetAngle = Math.atan2(dym, dxm);
+    }
   }
-  // Чернила: дрейф прицела
+  
   if (targetAngle !== null && sub.inkBlind > 0) {
     targetAngle += (Math.random() - 0.5) * 0.5;
   }
+  
   if (targetAngle !== null) {
     let diff = normAngle(targetAngle - sub.angle);
     const maxStep = sub.maxAngVel * dt;
@@ -681,62 +865,59 @@ function update(dt) {
   sub.angle = normAngle(sub.angle + sub.angVel * dt);
 
   // Движение и Лебедка
-  const thrustOn = isTouch ? thrust.pressed : mouse.down;
-  
-  if (winchState === 'pulling') {
-    winchHook.pullTime = (winchHook.pullTime || 0) + dt;
-    const dx = winchHook.x - sub.x;
-    const dy = winchHook.y - sub.y;
-    const dist = Math.hypot(dx, dy);
+  if (!isPvpFrozen) {
+    const thrustOn = isTouch ? thrust.pressed : mouse.down;
+    
+    if (winchState === 'pulling') {
+      winchHook.pullTime = (winchHook.pullTime || 0) + dt;
+      const dx = winchHook.x - sub.x;
+      const dy = winchHook.y - sub.y;
+      const dist = Math.hypot(dx, dy);
 
-    // Если дистанция стала NaN или бесконечной — сбрасываем лебедку
-    if (isNaN(dist) || !isFinite(dist) || dist < 12 || winchHook.pullTime > 1.0) {
-      winchState = 'idle';
-      winchCooldown = WINCH_COOLDOWN_MAX;
-      sub.vx = 0; sub.vy = 0;
+      if (isNaN(dist) || !isFinite(dist) || dist < 12 || winchHook.pullTime > 1.0) {
+        winchState = 'idle';
+        winchCooldown = WINCH_COOLDOWN_MAX;
+        sub.vx = 0; sub.vy = 0;
+      } else {
+        const pullSpeed = 600;
+        sub.vx = (dx / dist) * pullSpeed;
+        sub.vy = (dy / dist) * pullSpeed;
+      }
+      
     } else {
-      const pullSpeed = 600;
-      sub.vx = (dx / dist) * pullSpeed;
-      sub.vy = (dy / dist) * pullSpeed;
+      const fx = Math.cos(sub.angle), fy = Math.sin(sub.angle);
+      if (thrustOn) {
+        sub.vx += (fx * sub.maxThrust - sub.vx) * sub.thrustAccel;
+        sub.vy += (fy * sub.maxThrust - sub.vy) * sub.thrustAccel;
+        if (!motorActive) startMotor();
+        const intensity = Math.min(1, Math.hypot(sub.vx, sub.vy) / sub.maxThrust);
+        updateMotorSound(intensity);
+      } else {
+        sub.vx += (0 - sub.vx) * sub.fallBlend;
+        sub.vy += (FALL_SPEED - sub.vy) * sub.fallBlend;
+        if (motorActive) stopMotor();
+      }
     }
-  } else {
-    // Обычное движение
-    const fx = Math.cos(sub.angle), fy = Math.sin(sub.angle);
-    if (thrustOn) {
-      sub.vx += (fx * sub.maxThrust - sub.vx) * sub.thrustAccel;
-      sub.vy += (fy * sub.maxThrust - sub.vy) * sub.thrustAccel;
-      if (!motorActive) startMotor();
-      const intensity = Math.min(1, Math.hypot(sub.vx, sub.vy) / sub.maxThrust);
-      updateMotorSound(intensity);
-    } else {
-      sub.vx += (0 - sub.vx) * sub.fallBlend;
-      sub.vy += (FALL_SPEED - sub.vy) * sub.fallBlend;
-      if (motorActive) stopMotor();
-    }
+
+    sub.x += sub.vx * dt;
+    sub.y += sub.vy * dt;
   }
-
-  sub.x += sub.vx * dt;
-  sub.y += sub.vy * dt;
-
-  // Логика выстрела копья
-   // Логика выстрела лебедки
+  // Логика выстрела лебедки
   if (winchState === 'shooting') {
     winchHook.t += dt;
 
     if (winchHook.t >= 0.2) {
-      // Крюк долетел
       winchHook.x = winchHook.targetX;
       winchHook.y = winchHook.targetY;
 
       if (winchHook.hitBoss) {
-        // Попадание в Кракена: урон + отбрасывание дрона
         krakenHp = Math.max(0, krakenHp - 15);
         krakenDamageFlash = 0.3;
         krakenFlashType = 'physical';
         if (!krakenActive) {
           krakenActive = true;
           showToast('🐙 КРАКЕН ПРОБУДИЛСЯ!');
-              playBossMusic();
+          playBossMusic();
         }
         const d = Math.hypot(sub.x - krakenPos.x, sub.y - krakenPos.y) || 1;
         sub.vx = (sub.x - krakenPos.x) / d * 250;
@@ -748,14 +929,13 @@ function update(dt) {
         winchHook.pullTime = 0;
       }
     } else {
-      // Летит — интерполируем от точки выстрела к цели
       const k = winchHook.t / 0.2;
       winchHook.x = winchHook.originX + (winchHook.targetX - winchHook.originX) * k;
       winchHook.y = winchHook.originY + (winchHook.targetY - winchHook.originY) * k;
     }
   }
+
   // Логика торпед
-  // Логика торпед — заморозка рыб
   for (let i = torpedoes.length - 1; i >= 0; i--) {
     const t = torpedoes[i];
     t.x += t.vx * dt;
@@ -779,8 +959,6 @@ function update(dt) {
         }
       }
     }
-    // Попадание в Кракена
-    // Попадание в Кракена (точный SVG-хитбокс)
     if (!hitSomething && currentLevelData && currentLevelData.boss === 'kraken' && !krakenDefeated) {
       if (typeof isPointInKraken === 'function' && isPointInKraken(t.x, t.y)) {
         krakenHp = Math.max(0, krakenHp - 25);
@@ -834,33 +1012,33 @@ function update(dt) {
   }
 
   // Стены (коллизия)
-  let hitAny = false, firstHitInfo = null;
-  for (const w of walls) {
-    const res = circleVsSegment(sub.x, sub.y, sub.r, w.x1, w.y1, w.x2, w.y2);
-    if (res.hit) {
-      hitAny = true;
-      sub.x += res.nx * res.depth;
-      sub.y += res.ny * res.depth;
-      const vn = sub.vx * res.nx + sub.vy * res.ny;
-      if (vn < 0) { sub.vx -= vn * res.nx; sub.vy -= vn * res.ny; }
-      if (!firstHitInfo) firstHitInfo = { wall: w.id, px: res.px, py: res.py };
+  if (!isPvpFrozen) {
+    let hitAny = false, firstHitInfo = null;
+    for (const w of walls) {
+      const res = circleVsSegment(sub.x, sub.y, sub.r, w.x1, w.y1, w.x2, w.y2);
+      if (res.hit) {
+        hitAny = true;
+        sub.x += res.nx * res.depth;
+        sub.y += res.ny * res.depth;
+        const vn = sub.vx * res.nx + sub.vy * res.ny;
+        if (vn < 0) { sub.vx -= vn * res.nx; sub.vy -= vn * res.ny; }
+        if (!firstHitInfo) firstHitInfo = { wall: w.id, px: res.px, py: res.py };
+      }
+    }
+    if (hitAny && !inContact) {
+      inContact = true; wallHits++;
+      collisionPoints.push({
+        x: firstHitInfo.px, y: firstHitInfo.py,
+        wall: firstHitInfo.wall, t: elapsed, type: 'wall'
+      });
+      applyDamage(6, 'wall');
+    } else if (!hitAny && inContact) {
+      inContact = false;
+    }
+    if (inContact) {
+      wallContactTime += dt; wallDamage += 4 * dt; sub.hp -= 4 * dt;
     }
   }
-  if (hitAny && !inContact) {
-    inContact = true; wallHits++;
-    collisionPoints.push({
-      x: firstHitInfo.px, y: firstHitInfo.py,
-      wall: firstHitInfo.wall, t: elapsed, type: 'wall'
-    });
-    applyDamage(6, 'wall');
-  } else if (!hitAny && inContact) {
-    inContact = false;
-  }
-  if (inContact) {
-    wallContactTime += dt; wallDamage += 4 * dt; sub.hp -= 4 * dt;
-  }
-
-  // Рыбы (движение и коллизия)
   // Рыбы (движение и коллизия)
   for (const f of fishes) {
     if (f.frozen > 0) {
@@ -901,8 +1079,8 @@ function update(dt) {
     }
 
     if (Math.abs(f.vx) > 5) f.dir = f.vx >= 0 ? 1 : -1;
+    if (isPvpFrozen) continue;  // ← НОВОЕ: пропускаем столкновения, но рыбы анимируются
 
-    // Коллизия с дроном
     const isAngler = f.type === 'angler';
     const rx = isAngler ? f.r * 2.5 : f.r * 1.4;
     const ry = isAngler ? f.r * 1.5 : f.r * 0.9;
@@ -933,8 +1111,6 @@ function update(dt) {
       }
     }
 
-    // Физическое отталкивание (срабатывает ТОЛЬКО когда урон уже прошел)
-    // Делаем радиус отталкивания чуть меньше радиуса урона
     const pushRadius = Math.max(rx * 0.7, ry * 0.7) + sub.r * 0.5; 
     const dist = Math.hypot(bodyDx, bodyDy) || 1;
     
@@ -952,27 +1128,29 @@ function update(dt) {
       sub.vy += uy * 40;
     }
   }
+  
   updateKraken(dt);
   if (!running) return;
   updateAmbientBubbles(dt);
   if (sub.invuln > 0) sub.invuln -= dt;
 
-  if (sub.hp <= 0) { 
-    sub.hp = 0; 
-    if (currentLevel === 'PVP') {
-      if (typeof mpSendMyPosition === 'function' && myRoomCode) {
-      mpSendMyPosition(sub.x, sub.y, sub.angle, sub.propellerAngle, 0);
-      }
-      if (typeof mpSendDead === 'function') mpSendDead(); // <-- Отправляем сигнал
-      if (typeof pvpGameOver === 'function') pvpGameOver(false);
+  if (sub.hp <= 0) {
+    sub.hp = 0;
+    if (currentLevel.startsWith('PVP')) {
+      // Смерть контролирует СЕРВЕР:
+      //   CTF  → сервер пришлёт 'you_respawned' (x, y, hp=100)
+      //   Дуэль → сервер пришлёт 'you_died' + 'game_over_duel'
+      // Клиент только останавливает мотор и НИЧЕГО не шлёт.
+      if (typeof stopMotor === 'function') stopMotor();
     } else {
-      die(); 
+      die();
     }
-    return; 
+    return;
   }
-  // Финиш
+  
+  // Финиш (только не в CTF)
   const fdx = sub.x - finish.x, fdy = sub.y - finish.y;
-  if (Math.hypot(fdx, fdy) < finish.r - 4) {
+  if (currentLevel !== 'PVP_CTF' && Math.hypot(fdx, fdy) < finish.r - 4) {
     if (levelType === 'rings' && ringsCollected < ringsRequired) {
       if (!finishBlockedWarning) {
         finishBlockedWarning = true;
@@ -992,136 +1170,96 @@ function update(dt) {
   }
 
   elapsed += dt;
-  // --- ОТЛАДОЧНЫЙ КОД ---
+  
   if (Math.abs(sub.x - prevX) > 150 || Math.abs(sub.y - prevY) > 150) {
     console.warn('🚨 [DEBUG] РЕЗКИЙ СКАЧОК ЛОДКИ!', 'Было:', prevX.toFixed(1), prevY.toFixed(1), 'Стало:', sub.x.toFixed(1), sub.y.toFixed(1), 'Скорость:', sub.vx.toFixed(1), sub.vy.toFixed(1));
   }
   if (sub.x <= 0 || sub.y <= 0 || sub.x >= WORLD_W || sub.y >= WORLD_H) {
     console.warn('🚨 [DEBUG] ВЫЛЕТ В СТЕНУ/УГОЛ!', sub.x.toFixed(1), sub.y.toFixed(1));
-    // Принудительно вытаскиваем лодку обратно в центр экрана
     sub.x = Math.max(100, Math.min(WORLD_W - 100, sub.x));
     sub.y = Math.max(100, Math.min(WORLD_H - 100, sub.y));
     sub.vx = 0;
     sub.vy = 0;
   }
-  // Обновление снарядов врага (визуальные)
-  if (currentLevel === 'PVP' && typeof remoteTorpedoes !== 'undefined') {
-    for (let i = remoteTorpedoes.length - 1; i >= 0; i--) {
-      const t = remoteTorpedoes[i];
-      t.x += t.vx * dt;
-      t.y += t.vy * dt;
-      t.life -= dt;
-      
-      // Проверка столкновения со стенами
-      let hit = false;
-      for (const w of walls) {
-        if (circleVsSegment(t.x, t.y, 4, w.x1, w.y1, w.x2, w.y2).hit) { hit = true; break; }
-      }
-      
-      if (hit || t.life <= 0) {
-        remoteTorpedoes.splice(i, 1);
-      }
-    }
-  }
+  
 
-    // ============================================================
-  // ⚡ ИНТЕРПОЛЯЦИЯ ВРАГА (плавное движение)
-  // ============================================================
-  if (currentLevel === 'PVP' && typeof opponentPos !== 'undefined' && opponentPos.visible) {
-    const lerpSpeed = 0.25;
-    
-    // Движение
-    opponentPos.x += (opponentTarget.x - opponentPos.x) * lerpSpeed;
-    opponentPos.y += (opponentTarget.y - opponentPos.y) * lerpSpeed;
-    
-    // Защита от NaN
-    if (isNaN(opponentPos.x)) opponentPos.x = opponentTarget.x;
-    if (isNaN(opponentPos.y)) opponentPos.y = opponentTarget.y;
-    
-    // Поворот
-    let angleDiff = opponentTarget.angle - opponentPos.angle;
-    if (isNaN(angleDiff)) angleDiff = 0; 
-    
-    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-    opponentPos.angle += angleDiff * lerpSpeed;
-    
-    if (isNaN(opponentPos.angle)) opponentPos.angle = 0;
+  updateCamera();
+  updateHud();
+  syncMyPvpPosition(dt);   // ← ДОБАВЬ
+}
 
-    // Пропеллер
-    opponentPos.propellerAngle = opponentTarget.propellerAngle;
-  }
-  // ============================================================
-  // ============================================================
-  // PVP: СТОЛКНОВЕНИЯ И УРОН
-  // ============================================================
-  // ============================================================
-  // PVP: СТОЛКНОВЕНИЯ И УРОН
-  // ============================================================
-  if (currentLevel === 'PVP' && typeof opponentPos !== 'undefined' && opponentPos.visible && sub.hp > 0) {
-    
-    // 1. Наши торпеды бьют врага
-    for (let i = torpedoes.length - 1; i >= 0; i--) {
-      const t = torpedoes[i];
-      const dx = t.x - opponentPos.x;
-      const dy = t.y - opponentPos.y;
-      if (dx*dx + dy*dy < (sub.r * 1.5 + 10) * (sub.r * 1.5 + 10)) {
-        torpedoes.splice(i, 1);
-        if (typeof mpSendHit === 'function') mpSendHit(20); // Отправляем урон
-        soundFishHit();
-        break;
-      }
-    }
+// ================================================================
+//  🏴 ЛОГИКА ЗАХВАТА ФЛАГА (ВЫНЕСЕНО ИЗ UPDATE)
+// ================================================================
+function updateCTF(dt) {
+  if (currentLevel !== 'PVP_CTF' || !currentLevelData) return;
 
-    // 2. Вражеские торпеды бьют нас
-    if (typeof remoteTorpedoes !== 'undefined') {
-      for (let i = remoteTorpedoes.length - 1; i >= 0; i--) {
-        const t = remoteTorpedoes[i];
-        const dx = t.x - sub.x;
-        const dy = t.y - sub.y;
-        if (dx*dx + dy*dy < (sub.r + 10) * (sub.r + 10)) {
-          remoteTorpedoes.splice(i, 1);
-          soundWallHit();
-          break;
+  // 1. Таймер матча — только для HUD
+  matchTime = Math.max(0, matchTime - dt);
+
+  // 2. Заморозка уже обрабатывается в update() через currentLevelData.bases
+  // Здесь просто пропускаем
+
+  // 3. Подбор флага — в центре ИЛИ когда упал и лежит на полу
+  // 3. Подбор флага — в центре ИЛИ когда упал и лежит на полу
+  const canPickup = (ctfFlag.state === 'center') || (ctfFlag.state === 'dropped' && ctfFlag.onFloor);
+  if (!isPvpFrozen && ctfFlag.state !== 'carried' && canPickup) {
+    // Локальный кулдаун-чек (сервер всё равно проверит)
+    const pickCooldownOk = !ctfFlag.canBePickedAt || Date.now() >= ctfFlag.canBePickedAt;
+    if (pickCooldownOk) {
+      const dx = sub.x - ctfFlag.x;
+      const dy = sub.y - ctfFlag.y;
+      if (Math.hypot(dx, dy) < sub.r + 25) {
+        if (typeof mpSendFlagPickup === 'function') {
+          mpSendFlagPickup(socket ? socket.id : null);
         }
       }
     }
+  }
 
-    // 3. Таран
-    const rdx = sub.x - opponentPos.x;
-    const rdy = sub.y - opponentPos.y;
-    const rdist = Math.hypot(rdx, rdy);
-    if (rdist < sub.r * 2 && sub.invuln <= 0) {
-      sub.invuln = 1.0;
-      sub.hp -= 15; 
-      if (typeof mpSendHit === 'function') mpSendHit(15);
-      
-      const d = rdist || 1;
-      sub.vx = (rdx / d) * 300;
-      sub.vy = (rdy / d) * 300;
-      soundWallHit();
+  // 4. Позиция флага у носителя — только визуал
+  if (ctfFlag.state === 'carried' && ctfFlag.carrierId) {
+    if (socket && ctfFlag.carrierId === socket.id) {
+      ctfFlag.x = sub.x;
+      ctfFlag.y = sub.y;
     }
   }
 
-   // Проверка победы (если у врага 0 HP)
-  if (currentLevel === 'PVP' && typeof opponentTarget !== 'undefined' && opponentTarget.hp <= 0) {
-    if (typeof pvpGameOver === 'function') pvpGameOver(true);
-  }
+  // 5. Захват и победа — РЕШАЕТ СЕРВЕР через flag_state + game_over_ctf
+  // Клиент НЕ вызывает pvpGameOverCTF сам.
 
-    // Отправка координат по сети
-  if (currentLevel === 'PVP' && typeof mpSendMyPosition === 'function' && myRoomCode) {
-    if (!window.lastNetSend) window.lastNetSend = 0;
-    if (Date.now() - window.lastNetSend > 50) {
-      mpSendMyPosition(sub.x, sub.y, sub.angle, sub.propellerAngle, sub.hp);
-      window.lastNetSend = Date.now();
-    }
-  }
-  // ----------------------
- 
-  // ----------------------
-  updateCamera();
-  updateHud();
+  // 6. Заморожен с флагом → дропаем
+  
 }
+// ================================================================
+//  PVP: отправка позиции на сервер (~15 Гц)
+// ================================================================
+function syncMyPvpPosition(dt) {
+  if (!currentLevel.startsWith('PVP')) return;
+  if (typeof mpSendMyPosition !== 'function' || !myRoomCode) return;
+  if (!socket || !socket.connected) return;
+
+  sub._mpSyncTimer = (sub._mpSyncTimer || 0) + dt;
+  if (sub._mpSyncTimer >= 0.066) {
+    sub._mpSyncTimer = 0;
+    mpSendMyPosition(sub.x, sub.y, sub.angle, sub.propellerAngle, Math.round(sub.hp));
+  }
+}
+
+function isInsideBase(fx, fy, team) {
+  const base = team === 'blue' ? currentLevelData.bases.blue : currentLevelData.bases.red;
+  return Math.hypot(fx - base.x, fy - base.y) < base.r;
+}
+
+function dropFlag() {
+  ctfFlag.state = 'dropped';
+  ctfFlag.carrierId = null;
+  ctfFlag.carrierTeam = null;
+  showToast('🏴 Флаг потерян!');
+  if (typeof mpSendFlagDrop === 'function') mpSendFlagDrop(ctfFlag.x, ctfFlag.y);
+}
+
+// ================================================================
 
 function win() {
   running = false;
@@ -1130,7 +1268,6 @@ function win() {
   soundFinish();
   finalizeRun();
   
-  // Если точность меньше 80, показываем заголовок "Недостаточно точности"
   if (currentRun.accuracy < UNLOCK_THRESHOLD) {
     showStats('Недостаточно точности');
   } else {
@@ -1149,8 +1286,16 @@ function die() {
 
 async function showStats(title) {
   el('result-title').textContent = title;
+
+  // Показываем стандартные кнопки (для одиночных уровней), скрываем PvP-лоби
+  const _statsRestart = el('statsRestart');
+  const _statsMenu = el('statsMenu');
+  const _statsLobby = el('statsLobbyBtn');
+  if (_statsRestart) _statsRestart.style.display = '';
+  if (_statsMenu) _statsMenu.style.display = '';
+  if (_statsLobby) _statsLobby.style.display = 'none';
+
   const run = currentRun; 
-  // Для тренировки — свой заголовок и сохранение прогресса
   if (String(currentLevel).startsWith('T')) {
     if (run.resultState === 'win') {
       el('result-title').textContent = '🎓 Молодец! Тренировка пройдена!';
@@ -1195,13 +1340,11 @@ async function showStats(title) {
     ['Вердикт', `<span class="${gradeClass}">${grade}</span>`]
   );
 
-  // 1. Генерируем HTML для основной статистики
   let html = '';
   for (const [k, v] of rows) {
     html += `<div class="row"><span>${k}</span><span class="val">${v}</span></div>`;
   }
 
-  // 2. Проверяем артефакт (если уровень пройден на 80%+)
   let artifactHtml = '';
   if (run.resultState === 'win' && accuracy >= UNLOCK_THRESHOLD) {
     const artifactData = {
@@ -1213,13 +1356,11 @@ async function showStats(title) {
 
     const art = artifactData[currentLevel];
     if (art && !inventory[art.key]) {
-      // Выдаем артефакт
       inventory[art.key] = true;
       if (currentPlayer && currentPlayer.source !== 'nick') {
         saveInventoryForPlayer(currentPlayer.klass, currentPlayer.short);
       }
 
-      // Формируем красивую плашку артефакта
       artifactHtml = `
         <div style="margin-top: 15px; padding: 15px; background: rgba(212, 162, 89, 0.15); border: 1px solid #d4a259; border-radius: 10px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
           <h3 style="color: #ffd166; margin: 0 0 10px; font-size: 16px; text-transform: uppercase; letter-spacing: 1px;">🎉 Получен новый артефакт!</h3>
@@ -1231,17 +1372,13 @@ async function showStats(title) {
     }
   }
 
-  // 3. Показываем экраны
   if (run.resultState === 'win' && accuracy < UNLOCK_THRESHOLD) {
-    // Провал по точности
     const failContainer = el('fail-stats-container');
     if (failContainer) failContainer.innerHTML = html;
     showScreen('fail');
   } else {
-    // Успех или смерть
     const statsContainer = el('stats');
 
-    // 🏆 Если это победа на 5-м уровне — добавляем кнопку финала
     let endingHtml = '';
     if (currentLevel === 5 && run.resultState === 'win' && accuracy >= UNLOCK_THRESHOLD) {
       endingHtml = `
@@ -1256,18 +1393,15 @@ async function showStats(title) {
     if (statsContainer) statsContainer.innerHTML = html + artifactHtml + endingHtml;
     showScreen('stats');
 
-    // Привязываем кнопку "Смотреть финал" (если она есть)
     const showEndingBtn = el('showEndingBtn');
     if (showEndingBtn) {
       showEndingBtn.addEventListener('click', () => showScreen('ending'));
     }
   }
 
-  // 4. Отправка результата (Уровень + Артефакты В ОДНОМ ЗАПРОСЕ)
   if (!scoreSent && currentPlayer && run.resultState === 'win' && !String(currentLevel).startsWith('T')) {
     scoreSent = true;
     const result = await sendResult(currentLevel, accuracy);
-    // ...
   
     const s = el('sendStatus');
     if (s) {
@@ -1282,7 +1416,6 @@ async function showStats(title) {
     if (!result.ok) console.error('❌ Отправка не удалась:', result.error);
   }
 
-  // 5. Обновляем прогресс
   if (run.resultState === 'win' && accuracy >= UNLOCK_THRESHOLD && !String(currentLevel).startsWith('T')) {
     if (Number(currentLevel) + 1 > playerProgress && Number(currentLevel) < MAX_LEVEL) {
       playerProgress = Number(currentLevel) + 1;
@@ -1320,9 +1453,46 @@ const energyfill = el('energyfill');
 const energytext = el('energytext');
 
 function updateHud() {
-  if (!hud) return; // Защита
+  if (!hud) return;
+// ⬇️ ОТРИСОВКА ТАЙМЕРОВ CTF ⬇️
+  if (currentLevel === 'PVP_CTF') {
+    const ctfHud = el('ctfHud');
+    if (ctfHud) {
+      ctfHud.classList.remove('hidden');
+      
+      const bScore = el('blueScore');
+      const rScore = el('redScore');
+      const mTime = el('matchTimer');
+      
+      if (bScore) bScore.textContent = `СИНИЕ: ${Math.min(10, blueCaptureTime).toFixed(1)}`;
+      if (rScore) rScore.textContent = `КРАСНЫЕ: ${Math.min(10, redCaptureTime).toFixed(1)}`;
+      
+      if (mTime) {
+        const m = Math.floor(Math.max(0, matchTime) / 60);
+        const s = Math.floor(Math.max(0, matchTime) % 60);
+        mTime.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+      }
+    }
+  } else {
+    const ctfHud = el('ctfHud');
+    if (ctfHud) ctfHud.classList.add('hidden');
+  }
+  // ⬆️ КОНЕЦ ВСТАВКИ ⬆️
 
-  let hudHtml = `Время: ${elapsed.toFixed(1)}s<br>`;
+
+
+
+  let hudHtml = '';
+  
+  // Счётчик заморозок в дуэли
+  if (currentLevel === 'PVP') {
+    const fs = (typeof freezeScore !== 'undefined') ? freezeScore : { blue: 0, red: 0 };
+    const myF = myTeam === 'blue' ? fs.blue : fs.red;
+    const enemyF = myTeam === 'blue' ? fs.red : fs.blue;
+    hudHtml += `❄️ Заморозки: ${myF} / 3 (Враг: ${enemyF} / 3)<br>`;
+  }
+  
+  hudHtml += `Время: ${elapsed.toFixed(1)}s<br>`;
   if (levelType === 'rings') {
     hudHtml += `Кольца: ${ringsCollected}/${ringsRequired}<br>`;
   }
@@ -1339,7 +1509,6 @@ function updateHud() {
   }
   if (hptext) hptext.textContent = 'Корпус: ' + Math.round(hpPct);
 
-  // Энергия
   if (inventory.flashlight) {
     if (energybar) energybar.classList.remove('hidden');
     if (energytext) energytext.classList.remove('hidden');
@@ -1355,7 +1524,6 @@ function updateHud() {
     if (energytext) energytext.classList.add('hidden');
   }
 
-  // Кулдауны
   const winchCd = el('winchCd');
   const torpedoCd = el('torpedoCd');
   
@@ -1393,8 +1561,6 @@ function updateHud() {
 }
 
 // ---------- Статистика ----------
-
-
 function showArtifactScreen(art) {
   el('artifact-title').textContent = 'Вы нашли артефакт!';
   el('artifact-icon').textContent = art.icon;
@@ -1419,7 +1585,11 @@ const pauseRestart = el('pauseRestart');
 if (pauseRestart) pauseRestart.addEventListener('click', () => {
   paused = false; 
   const po = el('pauseOverlay'); if (po) po.classList.remove('show');
-  startLevel(currentLevel);
+  if (typeof currentLevel === 'string' && currentLevel.startsWith('PVP')) {
+    goToLobby();
+  } else {
+    startLevel(currentLevel);
+  }
 });
 
 const pauseChange = el('pauseChangePlayer');
@@ -1437,7 +1607,13 @@ if (pauseExit) pauseExit.addEventListener('click', () => {
 });
 
 const restartBtn = el('restartBtn');
-if (restartBtn) restartBtn.addEventListener('click', () => { startLevel(currentLevel); });
+if (restartBtn) restartBtn.addEventListener('click', () => {
+  if (typeof currentLevel === 'string' && currentLevel.startsWith('PVP')) {
+    goToLobby();
+  } else {
+    startLevel(currentLevel);
+  }
+});
 
 const exitBtn = el('exitBtn');
 if (exitBtn) exitBtn.addEventListener('click', goToMap);
@@ -1454,26 +1630,41 @@ if (playBtn) {
   });
 }
 
-// Кнопки экрана статистики
 const statsRestartBtn = el('statsRestart');
-if (statsRestartBtn) statsRestartBtn.addEventListener('click', () => { startLevel(currentLevel); });
+if (statsRestartBtn) statsRestartBtn.addEventListener('click', () => {
+  if (typeof currentLevel === 'string' && currentLevel.startsWith('PVP')) {
+    goToLobby();
+  } else {
+    startLevel(currentLevel);
+  }
+});
+
+// Кнопка "В лобби" — только для PvP-статистики
+const statsLobbyBtn = el('statsLobbyBtn');
+if (statsLobbyBtn) statsLobbyBtn.addEventListener('click', () => {
+  if (typeof goToLobby === 'function') goToLobby();
+});
+
 
 const statsMapBtn = el('statsMap');
 if (statsMapBtn) statsMapBtn.addEventListener('click', goToMap);
 
 const statsMenuBtn = el('statsMenu');
-if (statsMenuBtn) statsMenuBtn.addEventListener('click', goToMap);
+if (statsMenuBtn) statsMenuBtn.addEventListener('click', () => {
+  if (typeof currentLevel === 'string' && currentLevel.startsWith('PVP')) {
+    goToLobby();
+  } else {
+    goToMap();
+  }
+});
 
-// Кнопка экрана "Недостаточно точности"
 const failContinueBtn = el('failContinueBtn');
 if (failContinueBtn) {
   failContinueBtn.addEventListener('click', () => {
     goToMap();
   });
 }
-// ================================================================
-//  КНОПКИ НАВИГАЦИИ (ИСТОРИЯ, УПРАВЛЕНИЕ, ПАРАМЕТРЫ, ЛИДЕРБОРД)
-// ================================================================
+
 const storyBackBtn = el('storyBack');
 if (storyBackBtn) {
   storyBackBtn.addEventListener('click', () => {
@@ -1502,9 +1693,6 @@ if (lbBackBtn) {
   });
 }
 
-// ================================================================
-//  ПЕРЕКЛЮЧАТЕЛИ КАЧЕСТВА В ПАРАМЕТРАХ (чтобы не пропали)
-// ================================================================
 const optQuality = el('opt-quality');
 if (optQuality) {
   optQuality.value = qualityLevel;
@@ -1525,15 +1713,83 @@ if (optRender) {
     showToast('Разрешение: ' + renderScale);
   });
 }
+function goToLobby() {
+  // Закрываем комнату на сервере (если мы в ней)
+  if (typeof socket !== 'undefined' && socket && myRoomCode) {
+    socket.emit('player_abandon', { code: myRoomCode });
+  }
 
+  myRoomCode = null;
+  started = false; running = false; paused = false;
+  pvpGameEnded = false;
+
+  el('pauseOverlay').classList.remove('show');
+  stickEnd(); thrustUp(); stopMotor();
+
+  // Чистим PvP-состояние
+  if (typeof opponents !== 'undefined') {
+    for (const k in opponents) delete opponents[k];
+  }
+  if (typeof remoteTorpedoes !== 'undefined') {
+    remoteTorpedoes.length = 0;
+  }
+
+  // Скрываем HUD-элементы
+  const mm = el('minimap-container');
+  if (mm) mm.classList.add('hidden');
+  const ctfHud = el('ctfHud');
+  if (ctfHud) ctfHud.classList.add('hidden');
+
+  // Показываем МЕНЮ ЛОББИ (создать/список комнат), а не mpLobby
+  const lobby = el('mpLobby');
+  const mainMenu = el('mpMainMenu');
+  if (lobby) lobby.style.display = 'none';
+  if (mainMenu) mainMenu.style.display = 'flex';
+  if (el('mpStartBtn')) el('mpStartBtn').style.display = 'none';
+  if (el('mpReadyBtn')) el('mpReadyBtn').style.display = 'none';
+  if (el('mpCountdown')) el('mpCountdown').style.display = 'none';
+
+  showScreen('multiplayer');
+}
 // ---------- goToMap ----------
 function goToMap() {
+  // ⬇️ ОТПРАВЛЯЕМ СИГНАЛ ОБ ОКОНЧАНИИ ИГРЫ НА СЕРВЕР ⬇️
+  if (typeof socket !== 'undefined' && socket && myRoomCode) {
+    socket.emit('player_abandon', { code: myRoomCode });
+  }
+  // ⬆️ ⬆️ ⬆️
+
+  // Полный сброс PvP-состояния (иначе при возврате в PvP видна старая комната)
+  myRoomCode = null;
+  pvpGameEnded = false;
+
+  if (typeof opponents !== 'undefined') {
+    for (const k in opponents) delete opponents[k];
+  }
+  if (typeof remoteTorpedoes !== 'undefined') {
+    remoteTorpedoes.length = 0;
+  }
+
   started = false; running = false; paused = false;
   el('pauseOverlay').classList.remove('show');
   stickEnd(); thrustUp(); stopMotor();
+
+  // Сброс лобби-меню
+  const lobby = el('mpLobby');
+  const mainMenu = el('mpMainMenu');
+  if (lobby) lobby.style.display = 'none';
+  if (mainMenu) mainMenu.style.display = 'flex';
+  if (el('mpStartBtn')) el('mpStartBtn').style.display = 'none';
+  if (el('mpReadyBtn')) el('mpReadyBtn').style.display = 'none';
+  if (el('mpCountdown')) el('mpCountdown').style.display = 'none';
+
+  const mm = el('minimap-container');
+  if (mm) mm.classList.add('hidden');
+  const ctfHud = el('ctfHud');
+  if (ctfHud) ctfHud.classList.add('hidden');
+
   updateMinimapVisibility();
   
-  // Если тренировка не пройдена — принудительно режим Тренировки
   if (typeof isTrainingComplete === 'function' && !isTrainingComplete()) {
     if (typeof currentMapMode !== 'undefined') {
       currentMapMode = 'training';
@@ -1551,7 +1807,7 @@ function goToMap() {
 function loop(now) {
   const dt = Math.min(0.05, (now - lastTime) / 1000);
   lastTime = now;
-  if (started) {
+  if (started && running) {          // ← добавить `&& running`
     update(dt);
     draw();
   } else {
@@ -1568,23 +1824,21 @@ resize();
 updateCamera();
 showScreen('splash');
 lastTime = performance.now();
+
 // ================================================================
 //  🐙 КРАКЕН — ЛОГИКА БОЯ
 // ================================================================
 function updateKraken(dt) {
   if (!currentLevelData || currentLevelData.boss !== 'kraken') return;
 
-  // Пробуждение
   if (krakenActive && !krakenDefeated && krakenWakeT < 1) {
     krakenWakeT = Math.min(1, krakenWakeT + dt / 0.9);
   }
 
-  // Подъём с пола (медленнее открытия глаза)
   if (krakenActive && !krakenDefeated && krakenRiseT < 1) {
     krakenRiseT = Math.min(1, krakenRiseT + dt / 1.8);
   }
 
-  // Таймеры моргания
   if (krakenBlinkT > 0) {
     krakenBlinkT -= dt;
     if (krakenBlinkT < 0) krakenBlinkT = 0;
@@ -1594,7 +1848,6 @@ function updateKraken(dt) {
     if (krakenSquintT < 0) krakenSquintT = 0;
   }
 
-  // Случайное моргание (редкое)
   if (krakenActive && !krakenDefeated && krakenBlinkT <= 0 && Math.random() < dt * 0.3) {
     krakenBlinkT = 0.3;
   }
@@ -1607,11 +1860,10 @@ function updateKraken(dt) {
     return;
   }
 
-  // Триггер боя
   if (!krakenActive && sub.x > (currentLevelData.bossTriggerX || 2400)) {
     krakenActive = true;
     showToast('🐙 КРАКЕН ПРОБУДИЛСЯ!');
-        playBossMusic();
+    playBossMusic();
   }
 
   if (!krakenActive) return;
@@ -1619,20 +1871,14 @@ function updateKraken(dt) {
   krakenPhase = krakenHp > 200 ? 1 : (krakenHp > 100 ? 2 : 3);
   if (krakenDamageFlash > 0) krakenDamageFlash -= dt;
 
-  // Атаки щупальцами
-  // Атаки щупальцами — всегда 1 за атаку
-  // Атаки щупальцами — 1 за атаку, с паузами
   krakenAttackTimer -= dt;
   if (krakenAttackTimer <= 0) {
-    // Базовая пауза по фазам
     const baseInterval = krakenPhase === 1 ? 5.5 : (krakenPhase === 2 ? 4.5 : 3.5);
-    // ±20% рандома — чтобы не было «метронома»
     const jitter = baseInterval * (0.8 + Math.random() * 0.4);
     krakenAttackTimer = jitter;
     spawnTentacle();
   }
 
-  // Чернила (фаза 2+)
   if (krakenPhase >= 2) {
     krakenInkTimer -= dt;
     if (krakenInkTimer <= 0) {
@@ -1641,7 +1887,6 @@ function updateKraken(dt) {
     }
   }
 
-    // Предупреждения перед появлением щупальца
   for (let i = tentacleWarnings.length - 1; i >= 0; i--) {
     const w = tentacleWarnings[i];
     w.life += dt;
@@ -1650,26 +1895,22 @@ function updateKraken(dt) {
       tentacleWarnings.splice(i, 1);
     }
   }
-  // Обновление щупалец
-  // Обновление щупалец — медленный плавный подъём, быстрый спуск
+  
   for (let i = tentacles.length - 1; i >= 0; i--) {
     const t = tentacles[i];
     t.life += dt;
 
-    // Тайминги (в секундах)
-    const RISE = 3.3;   // медленный подъём — в 3× медленнее предыдущего
-    const HOLD = 0.5;   // держится наверху
-    const FALL = 0.55;  // быстрый спуск
+    const RISE = 3.3;
+    const HOLD = 0.5;
+    const FALL = 0.55;
 
     if (t.life < RISE) {
-      // Подъём: ease-out — быстро стартует, плавно тормозит у потолка
       const k = t.life / RISE;
       const eased = 1 - Math.pow(1 - k, 2);
       t.height = eased * t.maxHeight;
     } else if (t.life < RISE + HOLD) {
       t.height = t.maxHeight;
     } else if (t.life < RISE + HOLD + FALL) {
-      // Спуск: ease-in — плавно начинает, ускоряется вниз
       const k = (t.life - RISE - HOLD) / FALL;
       const eased = k * k;
       t.height = t.maxHeight * (1 - eased);
@@ -1680,7 +1921,6 @@ function updateKraken(dt) {
 
     if (t.height <= 20) continue;
 
-    // Физическая коллизия ВСЕГДА (даже в неуязвимости) — как стена
     const res = circleVsSegment(
       sub.x, sub.y, sub.r,
       t.x, t.baseY,
@@ -1696,16 +1936,13 @@ function updateKraken(dt) {
       }
     }
 
-    // Урон — только если ОБА кулдауна истекли
     if (res.hit && sub.invuln <= 0 && (sub.tentacleInvuln || 0) <= 0) {
       applyDamage(30, 'wall');
       sub.invuln = 0.5;
-      sub.tentacleInvuln = 1.5; // ← щит от повторных ударов щупальцами
+      sub.tentacleInvuln = 1.5;
     }
   }
 
-  // Обновление чернил
-  // Обновление чернил — ослепляют, но не тормозят
   for (let i = inkClouds.length - 1; i >= 0; i--) {
     const c = inkClouds[i];
     c.life -= dt;
@@ -1716,7 +1953,6 @@ function updateKraken(dt) {
     }
   }
 
-  // Таран в тело Кракена (точный SVG-хитбокс)
   const kHead = getKrakenHeadPos();
   const kdx = sub.x - kHead.x;
   const kdy = sub.y - kHead.y;
@@ -1724,12 +1960,10 @@ function updateKraken(dt) {
   
   let isRamHit = false;
   if (typeof isPointInKraken === 'function') {
-    // Проверяем центр лодки и её нос
     const p1 = isPointInKraken(sub.x, sub.y);
     const p2 = isPointInKraken(sub.x + Math.cos(sub.angle) * sub.r, sub.y + Math.sin(sub.angle) * sub.r);
     if (p1 || p2) isRamHit = true;
   } else {
-    // Запасной вариант, если SVG не загрузился
     isRamHit = (kdist < krakenPos.r + sub.r);
   }
 
@@ -1745,20 +1979,17 @@ function updateKraken(dt) {
     sub.x = kHead.x + (kdx / d) * (krakenPos.r + sub.r + 5);
     sub.y = kHead.y + (kdy / d) * (krakenPos.r + sub.r + 5);
     soundWallHit();
-      if (sub.hp <= 0) { 
-    sub.hp = 0; 
-    if (currentLevel === 'PVP' && typeof pvpGameOver === 'function') {
-      pvpGameOver(false);
-    } else {
-      die(); 
+    if (sub.hp <= 0) { 
+      sub.hp = 0; 
+      if (currentLevel.startsWith('PVP') && typeof pvpGameOver === 'function') {
+        pvpGameOver(false);
+      } else {
+        die(); 
+      }
+      return; 
     }
-    return; 
   }
-}
-  
 
-  // Победа
-  // Победа — заморозка вместо убийства
   if (krakenHp <= 0 && !krakenDefeated) {
     krakenDefeated = true;
     krakenSinkT = 0;
@@ -1772,19 +2003,15 @@ function updateKraken(dt) {
 }
 
 function spawnTentacle() {
-  // Если игрок стрелял недавно — бьём туда. Иначе — рандом возле дрона.
-  const TIME_WINDOW = 4.0; // 4 секунды
+  const TIME_WINDOW = 4.0;
   let x;
   if (elapsed - lastFireTime < TIME_WINDOW) {
-    // Точка последнего выстрела ± небольшой разброс
     x = lastFirePos.x + (Math.random() - 0.5) * 60;
   } else {
-    // Рандом возле текущей позиции
     x = sub.x + (Math.random() - 0.5) * 600;
   }
   x = Math.max(100, Math.min(WORLD_W - 100, x));
 
-  // Прищур глаза при атаке
   if (typeof krakenSquintT !== 'undefined') krakenSquintT = 0.8;
 
   tentacleWarnings.push({
@@ -1877,6 +2104,7 @@ function playBossMusic() {
     (typeof musicVolumeMultiplier === 'function' ? musicVolumeMultiplier() : 1);
   gameMusic.play().catch(() => {});
 }
+
 function getKrakenHeadPos() {
   const headR = krakenPos.r;
   const restingY = FLOOR_Y - headR * 1.05;
@@ -1887,10 +2115,8 @@ function getKrakenHeadPos() {
   let x = krakenPos.x;
   let y = baseY + (restingY - baseY) * sinkT;
 
-  // Живое качание с течением (только когда проснулся и жив)
   if (krakenActive && !krakenDefeated) {
     const t = sub.animTime;
-    // Увеличили амплитуду по X и Y
     x += Math.sin(t * 0.55) * 30 + Math.sin(t * 1.3) * 10;
     y += Math.sin(t * 0.8) * 35 + Math.sin(t * 1.7) * 12;
   }
@@ -1898,17 +2124,13 @@ function getKrakenHeadPos() {
   return { x, y };
 }
 
-// Совместимость со старым именем
 function getKrakenHeadY() {
   return getKrakenHeadPos().y;
 }
 
 function updateMinimapVisibility() {
   const mm = el('minimap-container');
-  if (!mm) {
-    console.warn('Элемент #minimap-container не найден в HTML');
-    return;
-  }
+  if (!mm) return;
   
   if (typeof inventory !== 'undefined' && inventory.map && started) {
     mm.classList.remove('hidden');
@@ -1916,6 +2138,7 @@ function updateMinimapVisibility() {
     mm.classList.add('hidden');
   }
 }
+
 // ---------- Кнопки экрана ФИНАЛА ----------
 const endingRestartBtn = el('endingRestartBtn');
 if (endingRestartBtn) {
@@ -1929,7 +2152,6 @@ const endingMapBtn = el('endingMapBtn');
 if (endingMapBtn) {
   endingMapBtn.addEventListener('click', goToMap);
 }
-
 
 requestAnimationFrame(loop);
 

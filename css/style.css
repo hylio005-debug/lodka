@@ -477,6 +477,10 @@ body.edit-layout #minimap-container.hidden {
   scrollbar-width: thin;
   scrollbar-color: #7fd6ff rgba(7, 19, 32, 0.5);
 }
+#screen-multiplayer {
+  background: linear-gradient(rgba(8, 18, 32, 0.7), rgba(8, 18, 32, 0.9)), url('../assets/ui/lobby-bg.jpg') no-repeat center center !important;
+  background-size: cover !important;
+}
 
 /* Панель паузы тоже скроллится */
 #pausePanel {

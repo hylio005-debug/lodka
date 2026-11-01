@@ -269,7 +269,14 @@ function draw() {
   }
 
   drawFinishPortal();
-
+  // ⬇️⬇️⬇️ РИСУЕМ БАЗЫ И ФЛАГ (используем ctx, а не mCtx) ⬇️⬇️⬇️
+  // Рисуем базы для CTF и для Дуэли (если они есть)
+  if (currentLevel.startsWith('PVP') && currentLevelData && currentLevelData.bases) {
+    drawBase(currentLevelData.bases.blue, '50,150,255');
+    drawBase(currentLevelData.bases.red, '255,80,80');
+    if (currentLevel === 'PVP_CTF') drawFlag();
+  }
+  // ⬆️⬆️⬆️ КОНЕЦ ВСТАВКИ ⬆️⬆️⬆️
   for (const w of walls) {
     const minX = Math.min(w.x1, w.x2), maxX = Math.max(w.x1, w.x2);
     const minY = Math.min(w.y1, w.y2), maxY = Math.max(w.y1, w.y2);
@@ -296,10 +303,12 @@ function draw() {
     drawTorpedo(t);
   }
     // Снаряды врага
-  if (currentLevel === 'PVP' && typeof remoteTorpedoes !== 'undefined') {
+
+  if (currentLevel.startsWith('PVP') && typeof remoteTorpedoes !== 'undefined') {
     for (const t of remoteTorpedoes) {
       if (t.x < vL - 50 || t.x > vR + 50) continue;
-      // Рисуем снаряды врага красным цветом
+      const isMine = (t.team === myTeam);
+      
       ctx.save();
       ctx.translate(t.x, t.y);
       ctx.rotate(t.angle);
@@ -308,15 +317,32 @@ function draw() {
       ctx.lineTo(-6, -3);
       ctx.lineTo(-6, 3);
       ctx.closePath();
-      ctx.fillStyle = '#ff4444'; // Красный
+      
+      if (isMine) {
+        // Своя пуля — жёлтая (или голубая если крио), как в одиночке
+        ctx.fillStyle = t.isCryo ? '#88ccff' : '#ffd166';
+      } else {
+        // Вражеская — красная (или голубая если крио)
+        ctx.fillStyle = t.isCryo ? '#88ccff' : '#ff4444';
+      }
       ctx.fill();
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 1;
       ctx.stroke();
+      
+      // Хвост (для красоты)
+      ctx.beginPath();
+      ctx.moveTo(-6, -2);
+      ctx.lineTo(-14 - Math.random() * 4, 0);
+      ctx.lineTo(-6, 2);
+      ctx.fillStyle = isMine
+        ? (t.isCryo ? 'rgba(150, 230, 255, 0.8)' : 'rgba(255, 200, 100, 0.8)')
+        : (t.isCryo ? 'rgba(150, 230, 255, 0.8)' : 'rgba(255, 100, 100, 0.8)');
+      ctx.fill();
+      
       ctx.restore();
     }
   }
-
   if (winchState !== 'idle') {
     drawWinch();
   }
@@ -354,7 +380,19 @@ function draw() {
   }
   
   drawSub();
-
+  // Цепь от лодки к базе
+  if (isPvpFrozen && currentLevelData && currentLevelData.bases) {
+    const base = currentLevelData.bases[myTeam === 'blue' ? 'blue' : 'red'];
+    ctx.beginPath();
+    ctx.setLineDash([10, 10]);
+    ctx.moveTo(sub.x, sub.y);
+    ctx.lineTo(base.x, base.y);
+    ctx.strokeStyle = myTeam === 'blue' ? '#7fd6ff' : '#ff6b6b';
+    ctx.lineWidth = 3 / zoom;
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  // ⬆️⬆️⬆️ КОНЕЦ ВСТАВКИ ⬆️⬆️⬆️
   // ============================================================
   // НАВИГАЦИОННАЯ СТРЕЛКА (для тренировочных уровней)
   // ============================================================
@@ -419,8 +457,26 @@ function draw() {
   // ============================================================
 
   // Рисуем соперника (если PvP)
-  if (currentLevel === 'PVP' && typeof opponentPos !== 'undefined' && opponentPos.visible) {
-    drawOpponent(opponentPos);
+  // Рисуем ВСЕХ соперников
+  if (currentLevel.startsWith('PVP') && typeof opponents !== 'undefined') {
+      for (const id in opponents) {
+          const opp = opponents[id];
+          if (!opp.visible) continue;
+          
+                    if (opp.isFrozen && currentLevelData && currentLevelData.bases) {
+              const base = currentLevelData.bases[opp.team === 'blue' ? 'blue' : 'red'];
+              ctx.beginPath();
+              ctx.setLineDash([10, 10]);
+              ctx.moveTo(opp.x, opp.y);
+              ctx.lineTo(base.x, base.y);
+              ctx.strokeStyle = opp.team === 'blue' ? '#7fd6ff' : '#ff6b6b';
+              ctx.lineWidth = 3 / zoom;
+              ctx.stroke();
+              ctx.setLineDash([]);
+          }
+          
+          drawOpponent(opp, id);
+      }
   }
 
 
@@ -1042,7 +1098,10 @@ function drawFinishPortal() {
 }
 
 function drawSub() {
-  const t = sub.animTime;
+  // Если мёртв — не рисуем лодку (ждём респавн)
+  if (typeof isPvpDead !== 'undefined' && isPvpDead) return;
+
+  const t = sub.animTime; // <--- ВОТ ЭТА СТРОЧКА ПОТЕРЯЛАСЬ
   const invulnBlink = sub.invuln > 0 && Math.floor(sub.invuln * 20) % 2 === 0;
   const breath = 1 + Math.sin(t * 2.2) * 0.03;
 
@@ -1051,11 +1110,40 @@ function drawSub() {
   ctx.rotate(sub.angle);
   ctx.scale(breath, breath);
 
+   // ❄️ ЛЕДЯНОЙ КУБ
+   //if (typeof isPvpFrozen !== 'undefined' && isPvpFrozen) {
+   //  ctx.save();
+   //  ctx.beginPath();
+    // Рисуем квадрат (или ромб) вокруг лодки
+   // ctx.rect(-sub.r * 2, -sub.r * 2, sub.r * 4, sub.r * 4);
+    
+    // Полупрозрачная голубая заливка
+   // ctx.fillStyle = 'rgba(150, 230, 255, 0.4)';
+   // ctx.fill();
+    
+    // Белая обводка
+   // ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+   // ctx.lineWidth = 3 / zoom;
+   // ctx.stroke();
+    
+    // Блик внутри
+   // ctx.beginPath();
+   // ctx.moveTo(-sub.r * 1.5, -sub.r * 1.5);
+   // ctx.lineTo(-sub.r * 0.5, -sub.r * 1.5);
+   //  ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+   // ctx.lineWidth = 2 / zoom;
+   ////  ctx.stroke();
+   // ctx.restore();
+   //}
+
+
+  // Тень
   ctx.beginPath();
   ctx.ellipse(0, sub.r * 0.6, sub.r * 1.6, sub.r * 0.4, 0, 0, Math.PI * 2);
   ctx.fillStyle = 'rgba(0,0,0,0.3)';
   ctx.fill();
 
+  // Пропеллер
   ctx.save();
   ctx.translate(-sub.r * 1.7, 0);
   ctx.rotate(sub.propellerAngle);
@@ -1068,6 +1156,7 @@ function drawSub() {
   }
   ctx.restore();
 
+  // Хвост
   ctx.beginPath();
   ctx.moveTo(-sub.r * 1.5, 0);
   ctx.lineTo(-sub.r * 1.2, -sub.r * 0.5);
@@ -1076,6 +1165,7 @@ function drawSub() {
   ctx.fillStyle = '#4f8cff';
   ctx.fill();
 
+  // Корпус
   const bg = ctx.createLinearGradient(0, -sub.r, 0, sub.r);
   bg.addColorStop(0, inContact ? '#ff8a8a' : (invulnBlink ? '#ffffff' : '#a4dfff'));
   bg.addColorStop(0.5, inContact ? '#ff6b6b' : (invulnBlink ? '#ffffff' : '#7fd6ff'));
@@ -1089,6 +1179,7 @@ function drawSub() {
   ctx.lineWidth = 2 / zoom;
   ctx.stroke();
 
+  // Иллюминатор
   ctx.beginPath();
   ctx.arc(sub.r * 0.25, 0, sub.r * 0.45, 0, Math.PI * 2);
   ctx.fillStyle = 'rgba(11, 26, 42, 0.75)';
@@ -1097,17 +1188,7 @@ function drawSub() {
   ctx.lineWidth = 1.2 / zoom;
   ctx.stroke();
 
-  ctx.beginPath();
-  ctx.arc(sub.r * 0.25, 0, sub.r * 0.25, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(160, 220, 255, 0.55)';
-  ctx.fill();
-
-  const lightOn = Math.sin(t * 6) > 0;
-  ctx.beginPath();
-  ctx.arc(sub.r * 0.25, -sub.r * 0.5, sub.r * 0.12, 0, Math.PI * 2);
-  ctx.fillStyle = lightOn ? '#ffe066' : '#806020';
-  ctx.fill();
-
+  // Нос
   ctx.beginPath();
   ctx.moveTo(sub.r * 1.5, 0);
   ctx.lineTo(sub.r * 1.1, -sub.r * 0.4);
@@ -1116,7 +1197,29 @@ function drawSub() {
   ctx.fillStyle = '#eaf6ff';
   ctx.fill();
 
-  ctx.restore();
+  ctx.restore(); // <--- ВЫХОДИМ ИЗ ПОВОРОТА (лодка нарисована)
+
+  // 3. Рисуем СВОЙ ник (теперь он не будет переворачиваться)
+  if (typeof currentLevel !== 'undefined' && currentLevel.startsWith('PVP') && typeof socket !== 'undefined' && socket && window.pvpPlayersInfo && window.pvpPlayersInfo[socket.id]) {
+    ctx.font = `bold ${14 / zoom}px monospace`;
+    ctx.fillStyle = '#6ee787'; // Зеленый для себя
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(window.pvpPlayersInfo[socket.id].nick, sub.x, sub.y - sub.r * 2.5);
+  }
+    // ⬇️ ДОБАВЬ ЭТОТ БЛОК ⬇️
+    // Рисуем флаг, если ты его несешь (только в CTF и только с активным сокетом)
+  if (
+    typeof ctfFlag !== 'undefined' &&
+    ctfFlag.state === 'carried' &&
+    typeof socket !== 'undefined' && socket &&
+    ctfFlag.carrierId === socket.id
+  ) {
+    ctx.font = '20px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('🏴', sub.x, sub.y - sub.r * 3.5 - 20);
+  }
+  // ⬆️ КОНЕЦ ВСТАВКИ ⬆️
 }
 
 function drawFish(f) {
@@ -1284,7 +1387,8 @@ function drawTorpedo(t) {
   ctx.lineTo(-6, -3);
   ctx.lineTo(-6, 3);
   ctx.closePath();
-  ctx.fillStyle = '#7fd6ff';
+  // Если крио — голубой, если ракета — желтоватый
+  ctx.fillStyle = t.isCryo ? '#88ccff' : '#ffd166'; 
   ctx.fill();
   ctx.strokeStyle = '#ffffff';
   ctx.lineWidth = 1;
@@ -1294,7 +1398,7 @@ function drawTorpedo(t) {
   ctx.moveTo(-6, -2);
   ctx.lineTo(-14 - Math.random() * 4, 0);
   ctx.lineTo(-6, 2);
-  ctx.fillStyle = 'rgba(180, 235, 255, 0.8)';
+  ctx.fillStyle = t.isCryo ? 'rgba(150, 230, 255, 0.8)' : 'rgba(255, 200, 100, 0.8)';
   ctx.fill();
   
   ctx.restore();
@@ -1811,20 +1915,40 @@ function drawMayanGlyphToCtx(c, x, y, size, seed) {
 
 
 
-function drawOpponent(pos) {
+function drawOpponent(pos, id) {
+  // Мёртвых не рисуем
+  if (pos.isDead) return;
+
   ctx.save();
   ctx.translate(pos.x, pos.y);
 
-  // 1. Рисуем HP-бар (ДО поворота, чтобы он всегда был горизонтальным)
-  if (typeof opponentTarget !== 'undefined') {
-    const oHp = opponentTarget.hp;
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(-30, -40, 60, 8);
-    ctx.fillStyle = '#ff4444';
-    ctx.fillRect(-30, -40, 60 * (Math.max(0, oHp) / MAX_HP), 8);
-  }
+  const isFriendly = (pos.team === myTeam);
+  
+    // 1. HP-бар (Красивая капсула, ближе к лодке)
+  const oHp = pos.hp !== undefined ? pos.hp : 100;
+  const hpW = 50; // Ширина
+  const hpH = 8;  // Высота
+  const hpX = -hpW / 2;
+  const hpY = -sub.r * 1.8 - 12; // Приблизили к лодке
+  // Фон (черная капсула)
+  ctx.beginPath();
+  ctx.roundRect(hpX, hpY, hpW, hpH, 4); // 4 - это радиус закругления
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fill();
+  ctx.strokeStyle = '#1e3a55';
+  ctx.lineWidth = 1;
+  ctx.stroke();
 
-  // 2. Теперь поворачиваем контекст для отрисовки самой лодки
+  // Заполнение (кровь)
+  const pct = Math.max(0, oHp / MAX_HP);
+  if (pct > 0) {
+    ctx.beginPath();
+    ctx.roundRect(hpX, hpY, hpW * pct, hpH, 4);
+    ctx.fillStyle = isFriendly ? '#6ee787' : '#ff4444';
+    ctx.fill();
+  }
+  // 2. Поворачиваем контекст ТОЛЬКО для лодки
+  ctx.save();
   ctx.rotate(pos.angle);
 
   // Тень
@@ -1833,11 +1957,11 @@ function drawOpponent(pos) {
   ctx.fillStyle = 'rgba(0,0,0,0.3)';
   ctx.fill();
 
-  // Пропеллер (вращается)
+  // Пропеллер
   ctx.save();
   ctx.translate(-sub.r * 1.7, 0);
   ctx.rotate(pos.propellerAngle || 0);
-  ctx.fillStyle = '#ffa0a0'; // Светло-красный
+  ctx.fillStyle = isFriendly ? '#a0ffc1' : '#ffa0a0';
   for (let i = 0; i < 3; i++) {
     ctx.rotate((Math.PI * 2) / 3);
     ctx.beginPath();
@@ -1846,20 +1970,18 @@ function drawOpponent(pos) {
   }
   ctx.restore();
 
-  // Хвостовая часть
-  ctx.beginPath();
-  ctx.moveTo(-sub.r * 1.5, 0);
-  ctx.lineTo(-sub.r * 1.2, -sub.r * 0.5);
-  ctx.lineTo(-sub.r * 1.2, sub.r * 0.5);
-  ctx.closePath();
-  ctx.fillStyle = '#cc3333';
-  ctx.fill();
-
   // Корпус
   const bg = ctx.createLinearGradient(0, -sub.r, 0, sub.r);
-  bg.addColorStop(0, '#ff8a8a');
-  bg.addColorStop(0.5, '#ff4444');
-  bg.addColorStop(1, '#cc2222');
+  if (isFriendly) {
+    bg.addColorStop(0, '#8affc1');
+    bg.addColorStop(0.5, '#6ee787');
+    bg.addColorStop(1, '#2eb85c');
+  } else {
+    bg.addColorStop(0, '#ff8a8a');
+    bg.addColorStop(0.5, '#ff4444');
+    bg.addColorStop(1, '#cc2222');
+  }
+  
   ctx.beginPath();
   ctx.ellipse(0, 0, sub.r * 1.5, sub.r * 0.85, 0, 0, Math.PI * 2);
   ctx.fillStyle = bg;
@@ -1873,7 +1995,7 @@ function drawOpponent(pos) {
   ctx.arc(sub.r * 0.25, 0, sub.r * 0.45, 0, Math.PI * 2);
   ctx.fillStyle = 'rgba(11, 26, 42, 0.75)';
   ctx.fill();
-  ctx.strokeStyle = 'rgba(255, 160, 160, 0.7)';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
   ctx.lineWidth = 1.2 / zoom;
   ctx.stroke();
 
@@ -1883,8 +2005,135 @@ function drawOpponent(pos) {
   ctx.lineTo(sub.r * 1.1, -sub.r * 0.4);
   ctx.lineTo(sub.r * 1.1, sub.r * 0.4);
   ctx.closePath();
-  ctx.fillStyle = '#ffe0e0';
+  ctx.fillStyle = isFriendly ? '#e0ffe0' : '#ffe0e0';
   ctx.fill();
 
-  ctx.restore();
+  ctx.restore(); // Выходим из поворота
+
+   // 3. Рисуем ник (прямо над HP-баром)
+  let nickToDraw = '';
+  let nickColor = isFriendly ? '#6ee787' : '#ff6b6b';
+  
+  if (pos.isBot) {
+    nickToDraw = pos.nick;
+  } else if (window.pvpPlayersInfo && window.pvpPlayersInfo[id]) {
+    nickToDraw = window.pvpPlayersInfo[id].nick;
+  }
+
+  if (nickToDraw) {
+    ctx.font = `bold ${12 / zoom}px monospace`;
+    ctx.fillStyle = nickColor;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(nickToDraw, 0, hpY - 4); // Текст вплотную к полоске
+  }
+
+    // 4. Флаг над лодкой (для ботов и для реальных игроков)
+  let hasFlag = pos.hasFlag; // Для ботов
+  if (!pos.isBot && typeof ctfFlag !== 'undefined' && ctfFlag.carrierId === id) {
+    hasFlag = true; // Для реальных игроков
+  }
+
+  if (hasFlag) {
+    ctx.font = '20px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('🏴', 0, -sub.r * 3.5 - 20);
+  }
+
+  // 5. Лед (заморозка)
+  if (pos.isFrozen) {
+    ctx.beginPath();
+    ctx.arc(0, 0, sub.r * 1.8, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(150, 230, 255, 0.5)';
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2 / zoom;
+    ctx.stroke();
+  }
+
+  ctx.restore(); // Закрываем первый ctx.save()
 }
+function drawBase(base, color) {
+  ctx.beginPath();
+  ctx.arc(base.x, base.y, base.r, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(${color}, 0.1)`;
+  ctx.fill();
+  ctx.strokeStyle = `rgba(${color}, 0.8)`;
+  ctx.lineWidth = 4;
+  ctx.stroke();
+}
+// В draw() вызови drawBase(currentLevelData.bases.blue, '50,150,255') и красную.
+function drawFlag() {
+  if (ctfFlag.state === 'center' || ctfFlag.state === 'dropped') {
+    const isOnFloor = ctfFlag.onFloor || (ctfFlag.state === 'dropped' && ctfFlag.y >= 1015);
+    const t = performance.now() / 1000;
+
+    if (isOnFloor) {
+      // Лежит на дне — древко плашмя
+      ctx.save();
+      ctx.translate(ctfFlag.x, ctfFlag.y);
+      ctx.rotate(-Math.PI / 2);
+
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(0, -40);
+      ctx.strokeStyle = '#8a6a3a';
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(0, -40);
+      ctx.lineTo(28 + Math.sin(t * 2) * 2, -30);
+      ctx.lineTo(0, -20);
+      ctx.fillStyle = '#ffd166';
+      ctx.fill();
+      ctx.strokeStyle = '#b8860b';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+
+      // Ореол "можно подобрать"
+      const pulse = 1 + Math.sin(t * 4) * 0.15;
+      ctx.beginPath();
+      ctx.arc(ctfFlag.x, ctfFlag.y, 40 * pulse, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255, 209, 102, 0.6)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 6]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else {
+      // В воздухе — падает
+      ctx.beginPath();
+      ctx.ellipse(ctfFlag.x, 1020, 20, 6, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(ctfFlag.x, ctfFlag.y);
+      ctx.lineTo(ctfFlag.x, ctfFlag.y - 40);
+      ctx.strokeStyle = '#d4a259';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+
+      const windOffset = Math.sin(t * 8) * 3;
+      ctx.beginPath();
+      ctx.moveTo(ctfFlag.x, ctfFlag.y - 40);
+      ctx.lineTo(ctfFlag.x + 30 + windOffset, ctfFlag.y - 30);
+      ctx.lineTo(ctfFlag.x, ctfFlag.y - 20);
+      ctx.fillStyle = '#ffd166';
+      ctx.fill();
+    }
+  }
+}
+function drawChain(startX, startY, endX, endY) {
+  ctx.beginPath();
+  ctx.setLineDash([10, 10]); // Пунктир для эффекта цепи
+  ctx.moveTo(startX, startY);
+  ctx.lineTo(endX, endY);
+  ctx.strokeStyle = '#7fd6ff';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+// В draw() если isPvpFrozen — рисуем цепь от sub.x, sub.y до базы.
