@@ -473,14 +473,11 @@ function initMultiplayer() {
     if (typeof pvpGameOver === 'function') pvpGameOver(true);
   });
 
+  // ================================================================
+  //  Кнопка "Я готов" (делегирование + логи)
+  // ================================================================
   const readyBtn = el('mpReadyBtn');
-  if (readyBtn) {
-    readyBtn.addEventListener('click', () => {
-      if (socket && myRoomCode) {
-        socket.emit('toggle_ready', { code: myRoomCode });
-      }
-    });
-  }
+  
 
   socket.on('freeze_score', (data) => {
     if (typeof freezeScore !== 'undefined') {
@@ -620,7 +617,28 @@ function mpJoinRoom() {
 if (typeof el !== 'undefined') {
   const mpCreateBtn = el('mpCreateBtn');
   if (mpCreateBtn) mpCreateBtn.addEventListener('click', mpCreateRoom);
-
+  // ================================================================
+  //  Кнопка "Я готов" (глобальная привязка — работает всегда)
+  // ================================================================
+  const readyBtn = el('mpReadyBtn');
+  if (readyBtn) {
+    readyBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      console.log('🔵 Кнопка "Я готов" нажата!');
+      console.log('   Сокет:', socket ? socket.connected : 'null');
+      console.log('   Комната:', myRoomCode);
+      
+      if (socket && socket.connected && myRoomCode) {
+        socket.emit('toggle_ready', { code: myRoomCode });
+      } else {
+        if (typeof showToast === 'function') {
+          showToast('⚠️ Нет связи с сервером');
+        }
+      }
+    });
+  }
   const mpJoinBtn = el('mpJoinBtn');
   if (mpJoinBtn) mpJoinBtn.addEventListener('click', mpJoinRoom);
 
