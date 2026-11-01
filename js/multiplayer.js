@@ -18,22 +18,21 @@ let pvpGameEnded = false;
 
 
 function getSocketURL() {
+  // 🌐 Если нажата кнопка "Интернет" — подключаемся к продакшену
+  if (currentServerMode === 'online') {
+    return 'https://lodka777.ru';
+  }
+
+  // 🏠 Если "Локальная сеть":
   const host = window.location.hostname;
   const port = window.location.port;
 
-  // 🏠 ЛОКАЛЬНАЯ СЕТЬ (localhost, 127.0.0.1, 192.168.x.x)
-  if (host === 'localhost' || host === '127.0.0.1' || host.startsWith('192.168.')) {
-    // Если игра запущена через node server.js на порту 3000 — используем этот же origin
-    if (port === '3000') {
-      return window.location.origin;
-    }
-    // Если через Live Server (порт 5500 и т.д.) — принудительно шлём на 3000
-    return 'http://localhost:3000';
+  // Если игра открыта на порту 3000 (через node server.js) — используем его же
+  if (port === '3000') {
+    return window.location.origin;
   }
-
-  // 🌐 ПРОДАКШЕН (lodka777.ru и т.д.)
-  // nginx проксирует и статику, и WebSocket с одного домена
-  return window.location.origin;
+  // Если через Live Server (порт 5500) — шлём на 3000
+  return 'http://localhost:3000';
 }
 
 function initMultiplayer() {
@@ -665,6 +664,51 @@ if (typeof el !== 'undefined') {
       myRoomCode = null;
       el('mpLobby').style.display = 'none';
       el('mpMainMenu').style.display = 'flex';
+    });
+  }
+    // ================================================================
+  //  Переключение режимов Локальная / Интернет
+  // ================================================================
+  const modeLocalBtn = el('modeLocalBtn');
+  const modeOnlineBtn = el('modeOnlineBtn');
+
+  if (modeLocalBtn) {
+    modeLocalBtn.addEventListener('click', () => {
+      currentServerMode = 'local';
+      modeLocalBtn.style.background = '#2b7fff';
+      modeLocalBtn.style.color = 'white';
+      if (modeOnlineBtn) {
+        modeOnlineBtn.style.background = 'transparent';
+        modeOnlineBtn.style.color = '#7fd6ff';
+      }
+      
+      // Переподключаем сокет
+      if (socket) socket.disconnect();
+      socket = null;
+      initMultiplayer();
+      
+      showToast('🏠 Локальная сеть');
+      console.log('🔌 Переключено на локальную сеть. URL:', getSocketURL());
+    });
+  }
+
+  if (modeOnlineBtn) {
+    modeOnlineBtn.addEventListener('click', () => {
+      currentServerMode = 'online';
+      modeOnlineBtn.style.background = '#2b7fff';
+      modeOnlineBtn.style.color = 'white';
+      if (modeLocalBtn) {
+        modeLocalBtn.style.background = 'transparent';
+        modeLocalBtn.style.color = '#7fd6ff';
+      }
+      
+      // Переподключаем сокет
+      if (socket) socket.disconnect();
+      socket = null;
+      initMultiplayer();
+      
+      showToast('🌐 Интернет');
+      console.log('🔌 Переключено на интернет. URL:', getSocketURL());
     });
   }
 }
