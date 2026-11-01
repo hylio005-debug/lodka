@@ -3,7 +3,10 @@
 // ================================================================
 
 let socket = null;
-const SERVER_URLS = { local: window.location.origin, online: 'https://lodka777.ru' };
+const SERVER_URLS = { 
+  local: window.location.origin, 
+  online: 'https://lodka777.ru'   // ← сервер раздаёт и статику, и socket.io с одного домена
+};
 let currentServerMode = 'local';
 let myRoomCode = null;
 let myTeam = null;
@@ -15,10 +18,22 @@ let pvpGameEnded = false;
 
 
 function getSocketURL() {
-  if (currentServerMode === 'local' && (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.'))) {
-    return window.location.origin;
+  const host = window.location.hostname;
+  const port = window.location.port;
+
+  // 🏠 ЛОКАЛЬНАЯ СЕТЬ (localhost, 127.0.0.1, 192.168.x.x)
+  if (host === 'localhost' || host === '127.0.0.1' || host.startsWith('192.168.')) {
+    // Если игра запущена через node server.js на порту 3000 — используем этот же origin
+    if (port === '3000') {
+      return window.location.origin;
+    }
+    // Если через Live Server (порт 5500 и т.д.) — принудительно шлём на 3000
+    return 'http://localhost:3000';
   }
-  return currentServerMode === 'online' ? SERVER_URLS.online : 'http://localhost:3000';
+
+  // 🌐 ПРОДАКШЕН (lodka777.ru и т.д.)
+  // nginx проксирует и статику, и WebSocket с одного домена
+  return window.location.origin;
 }
 
 function initMultiplayer() {
